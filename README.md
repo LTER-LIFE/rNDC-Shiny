@@ -1,6 +1,6 @@
 # rNDC-Shiny
 
-This package provides a graphical user interface to *NatureDataCube*, through an R-Shiny app.
+This package provides a graphical user interface to *NatureDataCube*, through an R-Shiny app, using the functions and wrappers from the [`rNDC`](https://github.com/LTER-LIFE/rNDC) R package.
 
 The idea of the *NatureDataCube* is to offer an accessible way for researchers/ecologists to retrieve relevant data.
 
