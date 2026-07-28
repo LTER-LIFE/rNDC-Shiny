@@ -10,7 +10,7 @@ load_pkgs <- function(pkgs) {
 pkgs <- c(
   "shiny", "leaflet", "leaflet.extras", "sf", "dplyr", "purrr",
   "stringr", "httr", "geojsonsf", "jsonlite", "zip", "here", "terra",
-  "lubridate", "tools", "tibble", "shinyjs", "rstac", "NatureDataCubeR"
+  "lubridate", "tools", "tibble", "shinyjs", "rstac", "rNDC"
 )
 load_pkgs(pkgs)
 
