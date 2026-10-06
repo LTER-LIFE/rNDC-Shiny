@@ -1,5 +1,5 @@
 
-Nature Data Cube — Quick Start Guide
+NatureDataCube — Quick Start Guide
 ===================================
 
 Overview
@@ -35,4 +35,4 @@ You can select an existing project area, draw your own polygon on the map, or up
    - If dataset retrieval fails, check the messages area for details shown after retrieval attempts.
  
 
-Enjoy exploring — and thanks for using the Nature Data Cube app!
+Enjoy exploring — and thanks for using the NatureDataCube app!

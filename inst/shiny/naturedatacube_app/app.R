@@ -61,18 +61,16 @@ safe_source <- function(path) {
 }
 
 # ---------------------
-## Token / headers ----
-# ---------------------
+## Tokens ----
+# ---------------
 mytoken <- Sys.getenv("NDC_TOKEN")
 if (!nzchar(mytoken)) stop("NDC_TOKEN environment variable is not set. Add it to your .env file.")
-myheaders <- c("Accept" = "application/json;charset=utf-8", "token" = mytoken)
 
 agro_token <- Sys.getenv("ADC_TOKEN")
 if (!nzchar(agro_token)) stop("ADC_TOKEN environment variable is not set. Add it to your .env file.")
-# Headers for AgroDataCube endpoints (agrodatacube.wur.nl): Soil map, AHN,
-# Agricultural fields. These hit a different host than the NatureDataCube STAC
-# API and therefore need the ADC token, not the NDC token.
-agro_headers <- c("Accept" = "application/json;charset=utf-8", "token" = agro_token)
+# The ADC token is for AgroDataCube (agrodatacube.wur.nl): Soil map, AHN, Agricultural
+# fields and Weather. Those hit a different host than the NatureDataCube STAC API
+# and need the ADC token, not the NDC token (passed as `token` to rNDC::adc_get()).
 
 # -------------------------------------------------------------------------------------------
 ## Proxy path (e.g. /naturedatacube for https://lter-life-experience.org/naturedatacube) ----
@@ -124,11 +122,21 @@ classify_lter <- function(sf_obj) {
   sf_obj
 }
 
+# Search the NatureDataCube STAC API and return ALL matching items as an sf
+# object (NULL if nothing matches). rNDC::ndc_get(mode = "sf") only converts the
+# first page of results, so go through mode = "fetch" (all pages) instead.
+ndc_get_all_sf <- function(collection, roi = NULL, trange = NULL, limit = 1000) {
+  items <- rNDC::ndc_get(collection = collection, roi = roi, trange = trange,
+                         limit = limit, mode = "fetch")
+  if (length(items$features) == 0) return(NULL)
+  rstac::items_as_sf(items)
+}
+
 # Fetch the whole LTER collection once and classify it. Returns an sf object
 # (transformed to 4326) or NULL on failure. Cached at session scope below.
 fetch_lter_classified <- function() {
   out <- tryCatch(
-    rNDC::ndc_get(collection = ndc_lter_collection, mode = "sf", limit = 10000),
+    ndc_get_all_sf(collection = ndc_lter_collection),
     error = function(e) NULL
   )
   if (is.null(out) || nrow(out) == 0) return(NULL)
@@ -228,18 +236,16 @@ fetch_ndvi_stats_monthly <- function(roi_sf, collection, date_from, date_to) {
   trange <- NULL
   if (!is.null(date_from) && !is.na(date_from) && !is.null(date_to) && !is.na(date_to)) {
     trange <- tryCatch(
-      rNDC::ndc_trange(c(as.character(date_from), as.character(date_to))),
+      # date_to is a whole day: ndc_trange() turns a date into 00:00:00Z, which
+      # would drop that day's observations, so extend the end to 23:59:59.
+      rNDC::ndc_trange(c(lubridate::as_datetime(date_from),
+                         lubridate::as_datetime(date_to) + 86399)),
       error = function(e) NULL
     )
   }
 
   out <- tryCatch({
-    if (is.null(trange)) {
-      rNDC::ndc_get(collection = collection, roi = roi_sf, mode = "sf", limit = 10000)
-    } else {
-      rNDC::ndc_get(collection = collection, roi = roi_sf, trange = trange,
-                               mode = "sf", limit = 10000)
-    }
+    ndc_get_all_sf(collection = collection, roi = roi_sf, trange = trange)
   }, error = function(e) structure("ndc_error", message = conditionMessage(e)))
 
   if (is.character(out) && identical(as.character(out), "ndc_error")) {
@@ -2436,8 +2442,8 @@ server <- function(input, output, session) {
 
         tryCatch({
           if (ds == "Agricultural fields") {
-            myurl <- adc_url("Fields", params = c(geometry = mypolygon, epsg = "4326", year = ov$year[i], output_epsg = "4326"))
-            myres <- content(VERB("GET", url = myurl, add_headers(agro_headers)))
+            myurl <- rNDC::adc_url("Fields", params = c(geometry = mypolygon, epsg = "4326", year = ov$year[i], output_epsg = "4326"))
+            myres <- rNDC::adc_get(url = myurl, token = agro_token)
             myres_sf <- geojsonsf::geojson_sf(jsonlite::toJSON(myres, auto_unbox = TRUE))
             results[[paste0(ds, "_", i)]] <- myres_sf
 
@@ -2454,8 +2460,8 @@ server <- function(input, output, session) {
             }
 
           } else if (ds == "AHN") {
-            myurl <- adc_url("AHN", params = c(geometry = mypolygon, epsg = "4326"))
-            myres <- content(VERB("GET", url = myurl, add_headers(agro_headers)))
+            myurl <- rNDC::adc_url("AHN", params = c(geometry = mypolygon, epsg = "4326"))
+            myres <- rNDC::adc_get(url = myurl, token = agro_token)
             myres_sf <- geojsonsf::geojson_sf(jsonlite::toJSON(myres, auto_unbox = TRUE))
             results[[paste0(ds, "_", i)]] <- myres_sf
 
@@ -2472,8 +2478,8 @@ server <- function(input, output, session) {
             }
 
           } else if (ds == "Soil map") {
-            myurl <- adc_url("Soiltypes", params = c(geometry = mypolygon, epsg = "4326", output_epsg = "4326", page_size = "25", page_offset = "0"))
-            myres <- content(VERB("GET", url = myurl, add_headers(agro_headers)))
+            myurl <- rNDC::adc_url("Soiltypes", params = c(geometry = mypolygon, epsg = "4326", output_epsg = "4326", page_size = "25", page_offset = "0"))
+            myres <- rNDC::adc_get(url = myurl, token = agro_token)
             myres_sf <- geojsonsf::geojson_sf(jsonlite::toJSON(myres, auto_unbox = TRUE))
             results[[paste0(ds, "_", i)]] <- myres_sf
 
@@ -2617,9 +2623,12 @@ server <- function(input, output, session) {
                 }
               }
 
-            } else if (input$ndvi_mode == "single") {
-              year <- as.integer(input$ndvi_year)
-              month <- as.integer(input$ndvi_month)
+            } else if (!is.na(ov$date_from[i]) && !is.na(ov$date_to[i]) &&
+                       format(ov$date_from[i], "%Y-%m") == format(ov$date_to[i], "%Y-%m")) {
+              # Single month: use the dates stored in the overview row, not the
+              # current input widgets (which may have changed or not exist).
+              year <- as.integer(format(ov$date_from[i], "%Y"))
+              month <- as.integer(format(ov$date_from[i], "%m"))
               r <- download_avg_ndvi_month(poly_sf, year, month)
                 if (is.null(r)) {
                   no_data_msg <- "No data available for this month"
