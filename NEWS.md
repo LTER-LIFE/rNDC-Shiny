@@ -14,6 +14,7 @@
 * NDVI rasters are retrieved for the month(s) of their row in the overview, not for what the input widgets happen to say when downloading.
 * NDVI statistics only contain the selected polygon's own feature (they used to include the neighbouring SNL parcels), and cover the whole last day of the period.
 * All pages of results are retrieved: the LTER layer, the NDVI statistics, and the AgroDataCube Fields and Soil map (which were cut off at 50 and 25 features).
+* A download no longer loses data when the same dataset is requested for the same polygon with different years or periods: the second file used to overwrite the first in the zip; it now gets the period in its name (e.g. `agricultural_fields_geodata_own_polygon_2023.gpkg`). Likewise, two different polygons with the same name (e.g. uploaded files with the same file name) both get their reference polygon file.
 * AgroDataCube errors are reported with the message of the server.
 * A missing meteorological station is reported properly.
 * Downloads are safe when several people use the app at the same time (no `setwd()`, unique export folders, temporary files are removed).

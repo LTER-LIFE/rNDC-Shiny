@@ -193,3 +193,45 @@ test_that("downloading shows the reason when no dataset could be retrieved", {
     expect_null(prepared_zip())
   })
 })
+
+test_that("the same dataset for two years gives two files in the download", {
+  local_webmock()
+  webmockr::stub_request("get", uri_regex = adc_re("fields")) |>
+    webmockr::to_return(body = json_body(geojson_features(1:2)), headers = json_header) |>
+    webmockr::to_return(body = json_body(geojson_features(1:3)), headers = json_header)
+  rows <- list(overview_row("Agricultural fields", year = 2024L), overview_row("Agricultural fields", year = 2023L))
+
+  with_overview(rows, {
+    res <- retrieve_and_save(zipfile = zip, save_files = TRUE)
+    dir <- withr::local_tempdir()
+    utils::unzip(zip, exdir = dir)
+    expect_setequal(list.files(dir), c("agricultural_fields_geodata_own_polygon.gpkg",
+                                       "agricultural_fields_geodata_own_polygon_2023.gpkg",
+                                       "download_summary.csv", "own_polygon.gpkg"))
+    summary <- utils::read.csv(file.path(dir, "download_summary.csv"))
+    expect_equal(summary$file_path[summary$date == 2023], "agricultural_fields_geodata_own_polygon_2023.gpkg")
+    expect_equal(nrow(res$datasets$`Agricultural fields_1`), 2)
+    expect_equal(nrow(res$datasets$`Agricultural fields_2`), 3)
+  })
+})
+
+test_that("two different polygons with the same name both end up in the download", {
+  local_webmock()
+  webmockr::stub_request("get", uri_regex = adc_re("soiltypes")) |>
+    webmockr::to_return(body = json_body(geojson_features(1:2, "soiltype")), headers = json_header)
+  second <- overview_row("Soil map")
+  second$polygon_sf <- list(sf::st_as_sf(sf::st_as_sfc(sf::st_bbox(
+    c(xmin = 6.1, ymin = 52.1, xmax = 6.2, ymax = 52.2), crs = sf::st_crs(4326)))))
+  second$wkt <- sf::st_as_text(sf::st_geometry(second$polygon_sf[[1]]))
+
+  with_overview(list(overview_row("Soil map"), second), {
+    res <- retrieve_and_save(zipfile = zip, save_files = TRUE)
+    dir <- withr::local_tempdir()
+    utils::unzip(zip, exdir = dir)
+    expect_setequal(list.files(dir), c("own_polygon.gpkg", "own_polygon_2.gpkg", "soil_map_geodata_own_polygon.gpkg",
+                                       "soil_map_geodata_own_polygon_2.gpkg", "download_summary.csv"))
+    summary <- utils::read.csv(file.path(dir, "download_summary.csv"))
+    expect_equal(sum(summary$dataset == "Area"), 2)
+    expect_false(anyDuplicated(summary$file_path[!is.na(summary$file_path)]) > 0)
+  })
+})
