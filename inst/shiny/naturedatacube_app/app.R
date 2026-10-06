@@ -2023,9 +2023,11 @@ server <- function(input, output, session) {
 
   build_controls_for <- function(ds, tab = NULL) {
     if (is.null(ds) || ds == "") return(NULL)
+    this_year <- as.integer(format(Sys.Date(), "%Y"))
+    last_year <- this_year - 1L  # latest complete year (AgroDataCube fields: 2017-last year)
 
     if (ds == "Agricultural fields") {
-      tagList(tags$div(class = "dataset-controls", numericInput("selected_year", "Select year:", value = 2025, min = 2020, max = 2025)))
+      tagList(tags$div(class = "dataset-controls", numericInput("selected_year", "Select year:", value = last_year, min = 2017, max = last_year)))
 
     } else if (ds == "Nitrogen") {
       tagList(tags$div(
@@ -2042,9 +2044,9 @@ server <- function(input, output, session) {
         tags$div(class = "dataset-controls",
                  radioButtons("weather_mode", label = NULL, choices = c("Single date" = "single", "Period" = "period"), selected = "single", inline = TRUE),
                  conditionalPanel(condition = "input.weather_mode == 'single'",
-                                  dateInput("weather_date", "Date (single):", value = as.Date("2025-01-01"), min = as.Date("2017-01-01"), max = as.Date("2025-01-01"))),
+                                  dateInput("weather_date", "Date (single):", value = Sys.Date() - 1, min = as.Date("2017-01-01"), max = Sys.Date())),
                  conditionalPanel(condition = "input.weather_mode == 'period'",
-                                  dateRangeInput("weather_period", "From - To:", start = as.Date("2024-12-01"), end = as.Date("2025-01-01"), min = as.Date("2017-01-01"), max = as.Date("2025-01-01")))
+                                  dateRangeInput("weather_period", "From - To:", start = Sys.Date() - 31, end = Sys.Date() - 1, min = as.Date("2017-01-01"), max = Sys.Date()))
         )
       )
 
@@ -2060,12 +2062,12 @@ server <- function(input, output, session) {
                  stats_note,
                  radioButtons("ndvi_mode", "NDVI query type:", choices = c("Single month" = "single", "Range of months" = "range"), selected = "single", inline = TRUE),
                  conditionalPanel(condition = "input.ndvi_mode == 'single'",
-                                  numericInput("ndvi_year", "Year:", value = 2025, min = 2017, max = as.integer(format(Sys.Date(), "%Y"))),
+                                  numericInput("ndvi_year", "Year:", value = last_year, min = 2017, max = this_year),
                                   numericInput("ndvi_month", "Month (1-12):", value = 1, min = 1, max = 12)),
                  conditionalPanel(condition = "input.ndvi_mode == 'range'",
                                   fluidRow(
-                                    column(6, numericInput("ndvi_from_year", "From Year:", value = 2025, min = 2017, max = as.integer(format(Sys.Date(), "%Y"))), numericInput("ndvi_from_month", "From Month (1-12):", value = 1, min = 1, max = 12)),
-                                    column(6, numericInput("ndvi_to_year", "To Year:", value = 2025, min = 2017, max = as.integer(format(Sys.Date(), "%Y"))), numericInput("ndvi_to_month", "To Month (1-12):", value = 12, min = 1, max = 12))
+                                    column(6, numericInput("ndvi_from_year", "From Year:", value = last_year, min = 2017, max = this_year), numericInput("ndvi_from_month", "From Month (1-12):", value = 1, min = 1, max = 12)),
+                                    column(6, numericInput("ndvi_to_year", "To Year:", value = last_year, min = 2017, max = this_year), numericInput("ndvi_to_month", "To Month (1-12):", value = 12, min = 1, max = 12))
                                   ))
         )
       )
@@ -2116,13 +2118,31 @@ server <- function(input, output, session) {
       year_val <- as.integer(landuse_default_year)
 
     } else if (input$selected_dataset == "NDVI") {
-      if (input$ndvi_mode == "single") {
-        date_from_val <- as.Date(sprintf("%04d-%02d-01", input$ndvi_year, input$ndvi_month))
-        date_to_val <- (as.Date(sprintf("%04d-%02d-01", input$ndvi_year, input$ndvi_month)) + months(1)) - 1
+      single <- is.null(input$ndvi_mode) || input$ndvi_mode == "single"
+      ym <- if (single) {
+        c(input$ndvi_year, input$ndvi_month, input$ndvi_year, input$ndvi_month)
       } else {
-        date_from_val <- as.Date(sprintf("%04d-%02d-01", input$ndvi_from_year, input$ndvi_from_month))
-        next_month <- as.Date(sprintf("%04d-%02d-01", input$ndvi_to_year, input$ndvi_to_month)) + months(1)
-        date_to_val <- next_month - 1
+        c(input$ndvi_from_year, input$ndvi_from_month, input$ndvi_to_year, input$ndvi_to_month)
+      }
+      if (length(ym) != 4 || any(is.na(ym)) || any(ym[c(2, 4)] < 1 | ym[c(2, 4)] > 12)) {
+        showNotification("Please enter valid years and months (1-12).", type = "error", duration = 5)
+        return(NULL)
+      }
+      date_from_val <- as.Date(sprintf("%04d-%02d-01", as.integer(ym[1]), as.integer(ym[2])))
+      date_to_val <- as.Date(sprintf("%04d-%02d-01", as.integer(ym[3]), as.integer(ym[4]))) + months(1) - 1
+      if (date_from_val > date_to_val) {
+        showNotification("The NDVI start month must not be after the end month.", type = "error", duration = 5)
+        return(NULL)
+      }
+      current_month <- as.Date(format(Sys.Date(), "%Y-%m-01"))
+      if (date_from_val > Sys.Date()) {
+        showNotification("The NDVI start month is in the future.", type = "error", duration = 5)
+        return(NULL)
+      }
+      if (date_to_val >= current_month + months(1)) {
+        # no data for future months: avoid one failing download per future day
+        date_to_val <- current_month + months(1) - 1
+        showNotification("The NDVI end month was set to the current month.", type = "warning", duration = 5)
       }
 
     } else if (input$selected_dataset == "Weather") {
@@ -2358,7 +2378,8 @@ server <- function(input, output, session) {
 
     if (save_files) {
       if (is.null(workdir)) {
-        workdir <- file.path(tempdir(), paste0("ndc_export_", format(Sys.time(), "%Y%m%d_%H%M%S")))
+        # unique per call: all sessions share one R process and one tempdir()
+        workdir <- tempfile("ndc_export_")
       }
       if (dir.exists(workdir)) unlink(workdir, recursive = TRUE)
       dir.create(workdir, recursive = TRUE)
@@ -2499,7 +2520,8 @@ server <- function(input, output, session) {
             cen_res <- get_closest_meteostation(mypolygon, token = agro_token)
             closest_id <- cen_res$closest_id
 
-            if (is.null(closest_id)) {
+            # get_closest_meteostation() gives character(0) (not NULL) when no id is found
+            if (length(closest_id) != 1 || is.na(closest_id) || !nzchar(closest_id)) {
               local_msgs <- c(local_msgs, "Failed: Weather - no nearby station found")
               add_manifest_row(ds, view_i, polygon_label, date_label, sf_ext, NA_character_, NA_character_, "failed")
               incProgress(1 / nrow(ov))
@@ -2759,15 +2781,15 @@ server <- function(input, output, session) {
 
       # Only write a zip when data was actually produced.
       if (!is.null(zipfile) && produced_any) {
-        oldwd <- getwd()
-        on.exit(setwd(oldwd), add = TRUE)
-        setwd(workdir)
-
-        files_to_zip <- list.files(".", recursive = TRUE, full.names = FALSE, no.. = TRUE)
+        # `root` avoids setwd(), which would change the working directory of
+        # every session served by this R process.
+        files_to_zip <- list.files(workdir, recursive = TRUE, full.names = FALSE, no.. = TRUE)
         if (length(files_to_zip) > 0) {
-          zip::zipr(zipfile, files = files_to_zip)
+          zip::zipr(zipfile, files = files_to_zip, root = workdir)
         }
       }
+      # The zip is the deliverable: don't leave the export folder in the shared tempdir()
+      if (!is.null(zipfile)) unlink(workdir, recursive = TRUE)
     }
 
     # The no-data notice and message clearing are handled by the download
@@ -2822,9 +2844,17 @@ server <- function(input, output, session) {
       )
       download_msgs("No data is available within your selection. Please try a different area, time period, or dataset.")
     } else {
+      old_zip <- isolate(prepared_zip())
+      if (!is.null(old_zip)) unlink(old_zip)
       prepared_zip(tmp_zip)
       session$sendCustomMessage("ndc_trigger_download", TRUE)
     }
+  })
+
+  # Remove the prepared zip when the session ends.
+  session$onSessionEnded(function() {
+    zp <- isolate(prepared_zip())
+    if (!is.null(zp)) unlink(zp)
   })
 
   # Serves the zip the pre-check already built and verified.
