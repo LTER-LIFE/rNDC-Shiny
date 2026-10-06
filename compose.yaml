@@ -1,6 +1,10 @@
 services:
   naturedatacube:
-    build: .
+    build:
+      context: .
+      args:
+        # rNDC branch or tag to install (see the Dockerfile)
+        RNDC_REF: ${RNDC_REF:-texel26}
     env_file: .env
     ports:
       - "3838:3838"

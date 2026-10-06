@@ -27,17 +27,19 @@ To generate your free personal API token to retrieve data you can go to [API Acc
 
 ## Running with Docker or Podman
 
-The Shiny app can also be run as a container, which handles all package dependencies automatically.
+The Shiny app can also be run as a container, which installs the package (`rNDC.Shiny`) and all its dependencies, including `rNDC`, automatically.
 
 **Setup:**
 
-Copy `.env.example` to `.env` and fill in your API token:
+Copy `.env.example` to `.env` and fill in your API tokens:
 
 ```         
 NDC_TOKEN=your_token_here
 ADC_TOKEN=your_agrodatacube_token_here
 SHINY_APP_BASE_URL=/naturedatacube
 ```
+
+`NDC_TOKEN` is required. `ADC_TOKEN` is optional: without it, the datasets from AgroDataCube (Weather, Soil map, AHN and Agricultural fields) are disabled. `SHINY_APP_BASE_URL` is only needed when a reverse proxy publishes the app under a path.
 
 **Run:**
 
@@ -49,4 +51,6 @@ docker compose up --build
 podman compose up --build
 ```
 
-The app will be available at `http://localhost:3838/naturedatacube`.
+The app will be available at `http://localhost:3838/`.
+
+By default the image installs `rNDC` from its `texel26` branch. To use another branch or tag, set `RNDC_REF` (e.g. `RNDC_REF=main docker compose up --build`).
