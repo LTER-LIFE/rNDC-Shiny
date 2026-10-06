@@ -121,7 +121,7 @@ classify_lter <- function(sf_obj) {
 # (transformed to 4326) or NULL on failure. Cached at session scope below.
 fetch_lter_classified <- function() {
   out <- tryCatch(
-    NatureDataCubeR::ndc_get(collection = ndc_lter_collection, mode = "sf", limit = 10000),
+    rNDC::ndc_get(collection = ndc_lter_collection, mode = "sf", limit = 10000),
     error = function(e) NULL
   )
   if (is.null(out) || nrow(out) == 0) return(NULL)
@@ -155,7 +155,7 @@ fetch_snl_bbox <- function(bbox) {
     return(list(status = "error", data = NULL, error = "Could not build viewport polygon."))
   }
   out <- tryCatch(
-    NatureDataCubeR::ndc_get(
+    rNDC::ndc_get(
       collection = ndc_snl_collection,
       roi        = roi_poly,
       mode       = "sf",
@@ -221,16 +221,16 @@ fetch_ndvi_stats_monthly <- function(roi_sf, collection, date_from, date_to) {
   trange <- NULL
   if (!is.null(date_from) && !is.na(date_from) && !is.null(date_to) && !is.na(date_to)) {
     trange <- tryCatch(
-      NatureDataCubeR::ndc_trange(c(as.character(date_from), as.character(date_to))),
+      rNDC::ndc_trange(c(as.character(date_from), as.character(date_to))),
       error = function(e) NULL
     )
   }
 
   out <- tryCatch({
     if (is.null(trange)) {
-      NatureDataCubeR::ndc_get(collection = collection, roi = roi_sf, mode = "sf", limit = 10000)
+      rNDC::ndc_get(collection = collection, roi = roi_sf, mode = "sf", limit = 10000)
     } else {
-      NatureDataCubeR::ndc_get(collection = collection, roi = roi_sf, trange = trange,
+      rNDC::ndc_get(collection = collection, roi = roi_sf, trange = trange,
                                mode = "sf", limit = 10000)
     }
   }, error = function(e) structure("ndc_error", message = conditionMessage(e)))
