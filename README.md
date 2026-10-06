@@ -12,11 +12,12 @@ To use the Shiny app and continue working with the retrieved data in R, the app 
 
 Steps:
 
-- Load the `NatureDataCubeR` package (e.g. by executing `library(NatureDataCubeR)`).
-- Make sure that your working directory is set to the folder you want to work from (this can be changed with `setwd("path/to/workingdirectory")`; note that `getwd()` can be used to check the current working directory).
-- Launch the Shiny app from within R by typing and executing `data_ndc <- ndc_gui()`.
+- Install the `rNDC` package, which the app relies on: `remotes::install_github("LTER-LIFE/rNDC", ref = "texel26")`.
+- Make sure your working directory is the folder you want to work from (this can be changed with `setwd("path/to/workingdirectory")`; `getwd()` shows the current one).
+- Set your tokens in the R session, e.g. `Sys.setenv(NDC_TOKEN = "...", ADC_TOKEN = "...")`.
+- Launch the app from within R with `data_ndc <- shiny::runApp("inst/shiny/naturedatacube_app")` (adjust the path to where this repository is located).
 
-Launching the app in this way ensures that the output generated through the Shiny interface is returned and stored in the R variable `data_nc` (note that this can be changed to a different object name). This allows you to continue working with the retrieved data in R after closing the app.
+Launching the app in this way ensures that the output generated through the Shiny interface is returned and stored in the R variable `data_ndc` (this can be changed to a different object name). This allows you to continue working with the retrieved data in R after closing the app.
 
 To retrieve data from the `NatureDataCube`, an API token is required. Make sure your token is available in your R session before requesting data.
 
@@ -34,6 +35,7 @@ Copy `.env.example` to `.env` and fill in your API token:
 
 ```         
 NDC_TOKEN=your_token_here
+ADC_TOKEN=your_agrodatacube_token_here
 SHINY_APP_BASE_URL=/naturedatacube
 ```
 

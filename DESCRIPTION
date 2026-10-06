@@ -7,3 +7,5 @@ Author: Bruno Marcos, Daan Lichtenberg, Minke Mulder
 Maintainer: Bruno Marcos <brunoasmarcos@gmail.com>, Daan Lichtenberg <D.Lichtenberg@nioo.knaw.nl>
 Description: Shiny app GUI to facilitate finding and getting data from LTER-LIFE's NatureDataCube.
 License: Apache Version 2.0
+Imports: shiny, shinyjs, leaflet, leaflet.extras, sf, dplyr, purrr, stringr, httr, geojsonsf, jsonlite, zip, here, terra, lubridate, tibble, rstac, rNDC
+Remotes: LTER-LIFE/rNDC@texel26, bhaskarvk/leaflet.extras
