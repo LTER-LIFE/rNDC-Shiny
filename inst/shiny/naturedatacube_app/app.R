@@ -132,6 +132,24 @@ ndc_get_all_sf <- function(collection, roi = NULL, trange = NULL, limit = 1000) 
   rstac::items_as_sf(items)
 }
 
+# Get ALL features of a paged AgroDataCube request (Fields, Soiltypes). The API
+# returns a single page (default 50 features; `page_offset` is the page number),
+# so keep requesting pages until one comes back short. Returns the parsed
+# GeoJSON of the first page with the features of all pages combined.
+adc_get_all <- function(option, params, token, page_size = 1000L, max_pages = 100L) {
+  params <- c(params, page_size = as.character(page_size))
+  res <- NULL
+  for (page in seq_len(max_pages) - 1L) {
+    url <- rNDC::adc_url(option, params = c(params, page_offset = as.character(page)))
+    cur <- rNDC::adc_get(url = url, token = token)
+    if (is.null(res)) res <- cur else res$features <- c(res$features, cur$features)
+    if (length(cur$features) < page_size) return(res)
+  }
+  warning("AgroDataCube request stopped after ", max_pages, " pages; the result may be incomplete.",
+          call. = FALSE)
+  res
+}
+
 # Fetch the whole LTER collection once and classify it. Returns an sf object
 # (transformed to 4326) or NULL on failure. Cached at session scope below.
 fetch_lter_classified <- function() {
@@ -253,6 +271,16 @@ fetch_ndvi_stats_monthly <- function(roi_sf, collection, date_from, date_to) {
   }
   if (is.null(out) || nrow(out) == 0) {
     return(list(status = "empty", data = NULL, error = NULL))
+  }
+
+  # The query returns every NDVI feature that INTERSECTS the polygon, which for
+  # SNL parcels includes the neighbouring parcels. Project polygons carry the
+  # `ndc_id` that also identifies their NDVI features: keep only those.
+  roi_ids <- if ("ndc_id" %in% names(roi_sf)) unique(as.character(roi_sf$ndc_id)) else character(0)
+  roi_ids <- roi_ids[!is.na(roi_ids)]
+  if (length(roi_ids) > 0 && "ndc_id" %in% names(out)) {
+    out <- out[as.character(out$ndc_id) %in% roi_ids, , drop = FALSE]
+    if (nrow(out) == 0) return(list(status = "empty", data = NULL, error = NULL))
   }
 
   # Drop geometry: statistics output is a plain table.
@@ -2463,8 +2491,8 @@ server <- function(input, output, session) {
 
         tryCatch({
           if (ds == "Agricultural fields") {
-            myurl <- rNDC::adc_url("Fields", params = c(geometry = mypolygon, epsg = "4326", year = ov$year[i], output_epsg = "4326"))
-            myres <- rNDC::adc_get(url = myurl, token = agro_token)
+            myres <- adc_get_all("Fields", c(geometry = mypolygon, epsg = "4326", year = ov$year[i], output_epsg = "4326"),
+                                 token = agro_token)
             myres_sf <- geojsonsf::geojson_sf(jsonlite::toJSON(myres, auto_unbox = TRUE))
             results[[paste0(ds, "_", i)]] <- myres_sf
 
@@ -2499,8 +2527,8 @@ server <- function(input, output, session) {
             }
 
           } else if (ds == "Soil map") {
-            myurl <- rNDC::adc_url("Soiltypes", params = c(geometry = mypolygon, epsg = "4326", output_epsg = "4326", page_size = "25", page_offset = "0"))
-            myres <- rNDC::adc_get(url = myurl, token = agro_token)
+            myres <- adc_get_all("Soiltypes", c(geometry = mypolygon, epsg = "4326", output_epsg = "4326"),
+                                 token = agro_token)
             myres_sf <- geojsonsf::geojson_sf(jsonlite::toJSON(myres, auto_unbox = TRUE))
             results[[paste0(ds, "_", i)]] <- myres_sf
 
