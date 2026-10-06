@@ -35,6 +35,13 @@ dataset_api_map <- list(
 
 all_dataset_names <- unique(unlist(available_datasets))
 
+# Defaults taken from rNDC. These are internal (unexported) constants of the
+# package, hence `:::`; ideally rNDC would export them.
+landuse_default_year   <- rNDC:::landuse_default_year
+nitrogen_layer_choices <- rNDC:::nitrogen_layer_choices
+# Years offered by the Nitrogen collections (see ?rNDC::get_nitrogen_raster)
+nitrogen_year_choices  <- c("2024", "2025", "2040")
+
 make_tab_id <- function(name) paste0(gsub("[^a-z0-9]+", "_", tolower(name)), "_tab")
 make_target_id <- function(name, tab) paste0("tab_target_", gsub("[^a-z0-9]+", "_", tolower(name)), "_", tolower(tab))
 
@@ -2015,7 +2022,14 @@ server <- function(input, output, session) {
       tagList(tags$div(class = "dataset-controls", numericInput("selected_year", "Select year:", value = 2025, min = 2020, max = 2025)))
 
     } else if (ds == "Nitrogen") {
-      nitrogen_controls_ui()
+      tagList(tags$div(
+        class = "dataset-controls",
+        selectInput("nitrogen_year", "Select year:", choices = nitrogen_year_choices,
+                    selected = nitrogen_year_choices[1], multiple = FALSE),
+        tags$div(style = "margin-top: 6px; color: #5a6472;",
+                 paste0("Retrieval will return all nitrogen rasters: ",
+                        paste(nitrogen_layer_choices, collapse = ", "), "."))
+      ))
 
     } else if (ds == "Weather") {
       tagList(
@@ -2093,7 +2107,7 @@ server <- function(input, output, session) {
       year_val <- as.integer(input$nitrogen_year)
 
     } else if (input$selected_dataset == "Land Use") {
-      year_val <- as.integer(ndc_landuse_default_year())
+      year_val <- as.integer(landuse_default_year)
 
     } else if (input$selected_dataset == "NDVI") {
       if (input$ndvi_mode == "single") {
@@ -2536,7 +2550,7 @@ server <- function(input, output, session) {
             nit_res <- get_nitrogen_raster(
               aoi = poly_sf,
               year = nit_year,
-              layers = ndc_nitrogen_layers(),
+              layers = nitrogen_layer_choices,
               token = mytoken,
               out_dir = tempdir(),
               overwrite = TRUE,
@@ -2672,7 +2686,7 @@ server <- function(input, output, session) {
 
           } else if (ds == "Land Use") {
             lu_year <- ov$year[i]
-            if (is.na(lu_year)) lu_year <- as.integer(ndc_landuse_default_year())
+            if (is.na(lu_year)) lu_year <- as.integer(landuse_default_year)
 
             lu_res <- get_landuse_raster(
               aoi = poly_sf,
