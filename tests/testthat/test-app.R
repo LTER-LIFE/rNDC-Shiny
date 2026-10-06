@@ -79,3 +79,64 @@ test_that("NDVI months are checked when a dataset is added", {
     expect_equal(overview()$date_to, as.Date("2025-08-31"))
   })
 })
+
+test_that("NDVI: a start in the future is rejected and an end in the future is clipped", {
+  withr::local_envvar(NDC_TOKEN = "t", ADC_TOKEN = "t")
+  this_year <- as.integer(format(Sys.Date(), "%Y"))
+  sel <- selected_polygon()
+
+  shiny::testServer(app_server, {
+    session$setInputs(selected_dataset = "NDVI", ndvi_mode = "range",
+                      ndvi_from_year = this_year + 1, ndvi_from_month = 1,
+                      ndvi_to_year = this_year + 1, ndvi_to_month = 12)
+    selected_polygons(sel)
+    session$flushReact()
+    session$setInputs(add_dataset = 1)
+    session$flushReact()
+    expect_equal(nrow(overview()), 0)
+
+    session$setInputs(ndvi_from_year = this_year, ndvi_from_month = 1,
+                      ndvi_to_year = this_year + 1, ndvi_to_month = 12)
+    session$setInputs(add_dataset = 2)
+    session$flushReact()
+    expect_equal(overview()$date_from, as.Date(paste0(this_year, "-01-01")))
+    expect_equal(overview()$date_to, lubridate::ceiling_date(Sys.Date(), "month") - 1)
+  })
+})
+
+test_that("invalid NDVI months and empty inputs are rejected", {
+  withr::local_envvar(NDC_TOKEN = "t", ADC_TOKEN = "t")
+  sel <- selected_polygon()
+
+  shiny::testServer(app_server, {
+    session$setInputs(selected_dataset = "NDVI", ndvi_mode = "single", ndvi_year = 2024, ndvi_month = 13)
+    selected_polygons(sel)
+    session$flushReact()
+    session$setInputs(add_dataset = 1)
+    session$flushReact()
+    expect_equal(nrow(overview()), 0)
+
+    session$setInputs(ndvi_month = NA)
+    session$setInputs(add_dataset = 2)
+    session$flushReact()
+    expect_equal(nrow(overview()), 0)
+  })
+})
+
+test_that("the same dataset is not added twice for the same polygon", {
+  withr::local_envvar(NDC_TOKEN = "t", ADC_TOKEN = "t")
+  sel <- selected_polygon()
+
+  shiny::testServer(app_server, {
+    session$setInputs(selected_dataset = "Land Use")
+    selected_polygons(sel)
+    session$flushReact()
+    session$setInputs(add_dataset = 1)
+    session$flushReact()
+    session$setInputs(add_dataset = 2)
+    session$flushReact()
+    expect_equal(nrow(overview()), 1)
+    expect_equal(overview()$year, 2024L)
+    expect_equal(overview()$dataset, "Land Use")
+  })
+})

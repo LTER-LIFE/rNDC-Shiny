@@ -1,4 +1,8 @@
-# rNDC-Shiny
+# rNDC.Shiny
+
+[![R-CMD-check](https://github.com/LTER-LIFE/rNDC-Shiny/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/LTER-LIFE/rNDC-Shiny/actions/workflows/R-CMD-check.yaml)
+[![live-checks](https://github.com/LTER-LIFE/rNDC-Shiny/actions/workflows/live-checks.yaml/badge.svg)](https://github.com/LTER-LIFE/rNDC-Shiny/actions/workflows/live-checks.yaml)
+[![docker-build](https://github.com/LTER-LIFE/rNDC-Shiny/actions/workflows/docker-build.yaml/badge.svg)](https://github.com/LTER-LIFE/rNDC-Shiny/actions/workflows/docker-build.yaml)
 
 This package provides a graphical user interface to *NatureDataCube*, through an R-Shiny app, using the functions and wrappers from the [`rNDC`](https://github.com/LTER-LIFE/rNDC) R package.
 
@@ -6,24 +10,62 @@ The idea of the *NatureDataCube* is to offer an accessible way for researchers/e
 
 *NatureDataCube* is a platform based on [*AgroDataCube*](https://agrodatacube.wur.nl/), holding and providing access to data used in the context of project [LTER-LIFE](https://lter-life.nl/en).
 
+## Installation
+
+```r
+# install.packages("remotes")
+remotes::install_github("LTER-LIFE/rNDC-Shiny")
+```
+
+This also installs [`rNDC`](https://github.com/LTER-LIFE/rNDC) (from its `texel26` branch, see `Remotes` in [DESCRIPTION](DESCRIPTION)) and the other dependencies. The package needs R >= 4.1.
+
+## Authentication
+
+API tokens are read from environment variables:
+
+| Variable | Needed for |
+|---|---|
+| `NDC_TOKEN` | **Required.** The *NatureDataCube* STAC API: project layers, NDVI statistics, Land Use and Nitrogen. |
+| `ADC_TOKEN` | Optional. The *AgroDataCube* REST API: Weather, Soil map, AHN and Agricultural fields. Without it, these datasets are disabled in the app. |
+
+For example, `Sys.setenv(NDC_TOKEN = "<your token>", ADC_TOKEN = "<your token>")`, or put them in your `.Renviron`.
+
+To generate your free personal API token you can go to [API Access Registration](https://ndc.wur.nl/register).
+
 ## Opening the Shiny app
 
-To use the Shiny app and continue working with the retrieved data in R, the app must be launched in a specific way so that the output is stored in an R object.
+```r
+library(rNDC.Shiny)
+data_ndc <- ndc_gui()
+```
 
-Steps:
+Launching the app this way stores what you retrieve in an R object, so that you can continue working with it after closing the app: choose your datasets in the app, and click "Return data to R (close app)" (this button is only shown in interactive R sessions). Make sure your working directory is the folder you want to work from (`getwd()` shows the current one, `setwd()` changes it).
 
-- Install the `rNDC` package, which the app relies on: `remotes::install_github("LTER-LIFE/rNDC", ref = "texel26")`.
-- Make sure your working directory is the folder you want to work from (this can be changed with `setwd("path/to/workingdirectory")`; `getwd()` shows the current one).
-- Set your tokens in the R session, e.g. `Sys.setenv(NDC_TOKEN = "...", ADC_TOKEN = "...")`. `NDC_TOKEN` is required; `ADC_TOKEN` is only needed for the AgroDataCube-based datasets (Weather, Soil map, AHN, Agricultural fields).
-- Launch the app from within R with `data_ndc <- shiny::runApp("inst/shiny/naturedatacube_app")` (adjust the path to where this repository is located).
+`ndc_gui()` returns a list with:
 
-Launching the app in this way ensures that the output generated through the Shiny interface is returned and stored in the R variable `data_ndc` (this can be changed to a different object name). This allows you to continue working with the retrieved data in R after closing the app: click "Return data to R (close app)" in the app (this button is only shown in interactive R sessions).
+- `datasets`: the retrieved data, one element per row of the overview, named after the dataset and the row (e.g. `Weather_1`, `Nitrogen_2`, `NDVI_stats_3`); `sf` objects for vector data and tables, and `terra` rasters for the raster datasets,
+- `overview`: the datasets, polygons and periods that were requested,
+- `messages` and `summary`: what happened to each dataset (retrieved, failed and why).
 
-To retrieve data from the `NatureDataCube`, an API token is required. Make sure your token is available in your R session before requesting data.
+The app can also be used to only download the data: "Download dataset(s)" gives a zip file with the data, the selected polygons and a `download_summary.csv`.
 
-## Generate an API token
+See [`examples/tutorial.R`](examples/tutorial.R) for a tutorial that combines bird nest data with weather data retrieved through the app.
 
-To generate your free personal API token to retrieve data you can go to [API Access Registration](https://ndc.wur.nl/register).
+## Datasets
+
+| Dataset | Output | Retrieved with | Token |
+|---|---|---|---|
+| Weather (KNMI, closest station) | table | `rNDC::get_closest_meteostation()`, `get_meteo_for_date()`, `get_meteo_for_long_period()` | `ADC_TOKEN` |
+| Agricultural fields, Soil map | `sf` | `rNDC::adc_url()`, `rNDC::adc_get()` (all pages of the results) | `ADC_TOKEN` |
+| AHN | table | `rNDC::adc_url()`, `rNDC::adc_get()` | `ADC_TOKEN` |
+| NDVI, Statistics | table (monthly means per polygon) | `rNDC::ndc_get()` on `ndvi-lter` / `ndvi-snl`; only for LTER and SNL project areas | `NDC_TOKEN` |
+| NDVI, Geodata | raster (monthly means) | `rNDC::download_avg_ndvi_month()`, `download_avg_ndvi_stack()` | `NDC_TOKEN`\* |
+| Land Use | raster | `rNDC::get_landuse_raster()` | `NDC_TOKEN` |
+| Nitrogen | raster (`ntot`, `nox`, `nh3`) | `rNDC::get_nitrogen_raster()` | `NDC_TOKEN` |
+
+\* The NDVI rasters come from GroenMonitor, which needs no token; the app itself needs `NDC_TOKEN` to load the project areas.
+
+Areas of interest can be one of the project areas (LTER projects, or SNL parcels), polygons you draw on the map, or polygons you upload (GeoPackage, shapefile, GeoJSON, KML, or a zip file with these).
 
 ## Running with Docker or Podman
 
@@ -54,3 +96,20 @@ podman compose up --build
 The app will be available at `http://localhost:3838/`.
 
 By default the image installs `rNDC` from its `texel26` branch. To use another branch or tag, set `RNDC_REF` (e.g. `RNDC_REF=main docker compose up --build`).
+
+## Development
+
+```r
+devtools::load_all()    # load the package
+ndc_gui()               # run the app from the working tree
+devtools::test()        # offline tests: the HTTP requests are stubbed
+roxygen2::roxygenise()  # regenerate NAMESPACE and man/ after changing roxygen comments
+```
+
+- The offline tests need no tokens. The live tests (`tests/testthat/test-live.R`) check the real APIs and run with `RNDC_LIVE_TESTS=true NDC_TOKEN=... ADC_TOKEN=... Rscript -e 'devtools::test(filter = "live")'`.
+- On GitHub, [`R-CMD-check`](.github/workflows/R-CMD-check.yaml) runs on every push and pull request, [`live-checks`](.github/workflows/live-checks.yaml) runs weekly against the real APIs (it needs the `NDC_TOKEN` and `ADC_TOKEN` repository secrets), and [`docker-build`](.github/workflows/docker-build.yaml) builds the image.
+- See [CLAUDE.md](CLAUDE.md) for an overview of the code.
+
+## Citation
+
+See [CITATION.cff](CITATION.cff).

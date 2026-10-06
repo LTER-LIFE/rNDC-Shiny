@@ -1,0 +1,30 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it using the metadata from this file."
+type: software
+title: "rNDC.Shiny: graphical user interface to LTER-LIFE's NatureDataCube"
+abstract: >-
+  A Shiny app that gives a graphical user interface to find and get data from
+  LTER-LIFE's NatureDataCube (and the related AgroDataCube and GroenMonitor
+  services), built on the functions of the rNDC package.
+version: "0.4.0"
+date-released: 2026-10-06
+license: Apache-2.0
+repository-code: "https://github.com/LTER-LIFE/rNDC-Shiny"
+url: "https://github.com/LTER-LIFE/rNDC-Shiny"
+authors:
+  - family-names: Marcos
+    given-names: Bruno
+    email: brunoasmarcos@gmail.com
+    orcid: 0000-0001-5423-5890
+  - family-names: Lichtenberg
+    given-names: Daan
+    email: D.Lichtenberg@nioo.knaw.nl
+  - family-names: Mulder
+    given-names: Minke
+keywords:
+  - R
+  - Shiny
+  - LTER-LIFE
+  - NatureDataCube
+  - Geospatial data
+  - Dutch nature areas

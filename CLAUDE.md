@@ -4,34 +4,38 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-`rNDC-Shiny` (Apache-2.0, maintained for LTER-LIFE) is a Shiny GUI to LTER-LIFE's **NatureDataCube**. It is a single app (`inst/shiny/naturedatacube_app/app.R`) with **no R package code of its own**: all data access goes through the [`rNDC`](https://github.com/LTER-LIFE/rNDC) R package, currently from its `texel26` branch (`Remotes:` in `DESCRIPTION`). Prefer exported `rNDC::` functions over re-implementing requests in the app; do not add R functions to this repo's own package namespace (there is none, and no `NAMESPACE`/`R/`). The app loads its dependencies with `library()`.
+`rNDC.Shiny` (Apache-2.0, maintained for LTER-LIFE; the GitHub repository is `LTER-LIFE/rNDC-Shiny`) is an R package with a Shiny GUI to LTER-LIFE's **NatureDataCube**. It is built on the [`rNDC`](https://github.com/LTER-LIFE/rNDC) package, currently from its `texel26` branch (`Remotes:` in `DESCRIPTION`): prefer exported `rNDC::` functions over re-implementing requests here, and put generic helpers that other rNDC users would want in rNDC itself. Unqualified calls to imported packages must be listed as imports in `R/rNDC.Shiny-package.R` (`@import shiny`, specific `@importFrom` for the rest, to avoid masking); otherwise use `pkg::fn`. `DESCRIPTION` `Imports` lists the packages.
 
 ## Commands
 
-Run R through the conda env: `conda run -n base_r Rscript -e '...'`. It has shiny, leaflet, sf, terra, rstac, testthat, devtools and `rNDC` (installed from `LTER-LIFE/rNDC@texel26`) available.
+Run R through the conda env: `conda run -n base_r Rscript -e '...'`. It has all dependencies, `devtools`, `roxygen2` and `webmockr`, and `rNDC` installed from `LTER-LIFE/rNDC@texel26`. Credentials for live runs are in `~/.Renviron`.
 
-- Run the app: `NDC_TOKEN=... ADC_TOKEN=... conda run -n base_r Rscript -e 'shiny::runApp("inst/shiny/naturedatacube_app", port = 3838)'`. `NDC_TOKEN` is required at startup (the app `stop()`s otherwise); `ADC_TOKEN` is optional (without it Weather, Soil map, AHN and Agricultural fields are disabled). Dummy values are enough to check that the app starts and serves, but data requests then fail. `runApp()` sets the working directory to the app directory. In an interactive session, `data <- shiny::runApp(...)` returns what `stopApp()` is given ("Return data to R" button, only shown when `interactive()`).
-- Syntax check without running: `conda run -n base_r Rscript -e 'invisible(parse("inst/shiny/naturedatacube_app/app.R"))'`.
+- Load during development: `devtools::load_all()`. Run the app: `NDC_TOKEN=... conda run -n base_r Rscript -e 'devtools::load_all(); ndc_gui(port = 3838, launch.browser = FALSE)'` (only `NDC_TOKEN` is required; dummy values are enough to check that the app starts and serves, but data requests then fail).
+- Run all tests: `devtools::test()`; a single file: `devtools::test(filter = "retrieval")` (matches `tests/testthat/test-<filter>.R`). The tests are offline: HTTP is stubbed at transport level with `webmockr` (httr adapter; rstac and httr both go through httr). `tests/testthat/helper-fixtures.R` has `local_stac_api()` (stub STAC API at `https://example.org/api/`, with result pages and an optional error status), `adc_re()` + `geojson_features()` for AgroDataCube stubs, `request_uris()` / `last_request_body()` to inspect the requests, and `selected_polygon()`.
+- Regenerate docs and `NAMESPACE`: `roxygen2::roxygenise()`. `NAMESPACE` and `man/` are **generated**; never edit them by hand. Imports are declared as tags in `R/rNDC.Shiny-package.R`, and every exported function needs `@export` plus a roxygen block.
+- Full check: `R CMD build .` in a scratch directory, then `R CMD check --no-manual rNDC.Shiny_*.tar.gz`. It must stay free of errors, warnings and notes (CI uses `error-on: "warning"`).
+- Live API tests (`tests/testthat/test-live.R`) are skipped unless `RNDC_LIVE_TESTS=true` (plus both tokens): `RNDC_LIVE_TESTS=true conda run -n base_r Rscript -e 'devtools::test(filter = "live")'`.
 - Update rNDC to the latest `texel26`: `conda run -n base_r Rscript -e 'remotes::install_github("LTER-LIFE/rNDC", ref = "texel26", upgrade = "never")'`. Check `packageDescription("rNDC")$RemoteSha` when behaviour differs from what the rNDC source says.
-- Container: `docker compose up --build` (or `podman compose`), reading `.env` (copy `.env.example`). The image installs rNDC from GitHub (`RNDC_REF`, default `texel26`), the other dependencies from `DESCRIPTION` (`remotes::install_deps()`, incl. `Remotes:`), then this package, and runs `rNDC.Shiny::ndc_gui(host = '0.0.0.0', port = 3838)`; the app is served at `http://localhost:3838/` (`SHINY_APP_BASE_URL` does not create a route, it only sets Shiny's `appBaseUrl` behind a reverse proxy). Docker is not available in the dev environment, so image builds are untested locally.
-- Server logic can be tested headlessly with `shiny::testServer("inst/shiny/naturedatacube_app", {...})` (server-local functions such as `retrieve_and_save` and the reactiveVals like `overview` are reachable; call `session$flushReact()` after `setInputs()`/setting reactiveVals). Top-level helpers can be tested by evaluating the top-level expressions of `app.R` before `ui <-` (do not `source()` the whole file: it ends in `shinyApp()`). Live tests use the tokens in `~/.Renviron`.
-- There is no test suite yet (`tests/tutorial.R` is a user tutorial, not a test, and is partly stale). If tests are added, use `testthat` and stub HTTP like rNDC does (`webmockr`, httr adapter).
-- Credentials come from env vars: `NDC_TOKEN` (NatureDataCube STAC API; also the default `token` of the `rNDC::ndc_get()`, land use and nitrogen functions) and `ADC_TOKEN` (AgroDataCube: Fields, AHN, Soil map, Weather). Never write tokens to the repo or to outputs.
+- Container: `docker compose up --build` (or `podman compose`), reading `.env` (copy `.env.example`). The image installs rNDC from GitHub (`RNDC_REF`, default `texel26`), the other dependencies from `DESCRIPTION` (`remotes::install_deps()`, incl. `Remotes:`), then this package, and runs `rNDC.Shiny::ndc_gui(host = '0.0.0.0', port = 3838)`; the app is served at `http://localhost:3838/` (`SHINY_APP_BASE_URL` does not create a route, it only sets Shiny's `appBaseUrl` behind a reverse proxy). Docker is not available in the dev environment: the image is built by the `docker-build` workflow only.
+- CI (`.github/workflows/`): `R-CMD-check.yaml` runs the offline check on push/PR; `live-checks.yaml` runs the live tests weekly (default branch) or on manual dispatch, using the `NDC_TOKEN`/`ADC_TOKEN` repository secrets; `docker-build.yaml` builds the image (no push) when the Docker files or the package change. Repo: https://github.com/LTER-LIFE/rNDC-Shiny.
+- Credentials come from env vars: `NDC_TOKEN` (NatureDataCube STAC API, also the default `token` of `rNDC::ndc_get()`, land use and nitrogen functions; **required**) and `ADC_TOKEN` (AgroDataCube: Fields, AHN, Soil map, Weather; **optional**, those datasets are disabled without it). Never write tokens to the repo or to outputs.
 
 ## Architecture
 
-All in `inst/shiny/naturedatacube_app/app.R` (flat file, top to bottom):
+Code lives in flat `R/*.R` files:
 
-1. **Config and helpers**: dataset menu (`available_datasets`), tab layout per dataset, tokens, and constants taken from rNDC internals (`landuse_default_year`, `nitrogen_layer_choices` via `rNDC:::`, because rNDC does not export them; the nitrogen years are read from the STAC items by `get_nitrogen_years()`, falling back to 2024/2025/2040).
-2. **Project layers from the STAC API** via `rNDC::ndc_get()`: the `lter` collection is fetched once per process (cached for an hour, see `get_lter_data`) and classified by `name` into 4 projects (`classify_lter`); `snl` (~264k parcels) is fetched per map viewport (`fetch_snl_bbox`, zoom-gated, capped by `snl_fetch_limit`). NDVI statistics come from the `ndvi-lter` / `ndvi-snl` collections (`fetch_ndvi_stats_monthly`, chosen by `detect_ndvi_collection` from the polygon's source name, e.g. `Nestboxes_3`, `SNL parcel_12`).
-3. **Polygon handling**: selection by clicking fixed project polygons, drawing, or uploading (zip/gpkg/shp/geojson/kml); everything is kept in EPSG:4326 with a `wkt` column used by the retrieval code.
-4. **UI and server**: `overview` reactiveVal is the "shopping cart" (one row per dataset x polygon x year/dates, with the polygon `sf` in a list column). `retrieve_and_save()` loops over the rows, calls the rNDC function for each dataset, writes files (csv for the Statistics view, gpkg/tif otherwise) plus a `download_summary.csv` manifest, and zips them. The same function backs "Download" (zip) and "Return data to R" (`stopApp(list(datasets, overview, messages, summary, ...))`).
+1. **Launchers** (`ndc_gui.R`, `ndc_app.R`, the only exports): `ndc_gui()` runs `shiny::runApp(ndc_app(), ...)` and returns what `stopApp()` is given (the "Return data to R" button, shown only when `interactive()`); `ndc_app()` registers the `ndc-www` resource path (logo, from `inst/app/www`) and returns `shinyApp(app_ui(), app_server)`. `ndc_setup()` (internal, called by `ndc_app()`) stops without `NDC_TOKEN`, warns without `ADC_TOKEN` and sets `shiny.appBaseUrl` from `SHINY_APP_BASE_URL`. `inst/app/app.R` is a one-line entry point (`rNDC.Shiny::ndc_app()`) for Shiny Server.
+2. **UI and server** (`app_ui.R`, `app_server.R`): `app_ui()` returns the page (CSS/JS inline); `app_server()` holds all reactive logic. The `overview` reactiveVal is the "shopping cart" (one row per dataset x polygon x year/dates, with the polygon `sf` in a list column). `retrieve_and_save()` (inside the server) loops over the rows, calls the rNDC function for each dataset, writes files (csv for the Statistics view, gpkg/tif otherwise) plus a `download_summary.csv` manifest into a unique temp folder, zips them with `zip::zipr(root = )` and removes the folder. It backs both "Download" (zip) and "Return data to R" (`stopApp(list(datasets, overview, messages, summary, ...))`); per-dataset messages ("Retrieved: ...", "Failed: ... - reason") are shown in the messages panel.
+3. **Constants** (`constants.R`): dataset menu and tab layout, STAC collection IDs, SNL settings, `adc_datasets`, and the rNDC internals taken lazily with `delayedAssign()` (`landuse_default_year`, `nitrogen_layer_choices`; `rNDC:::`, because rNDC does not export them).
+4. **STAC/ADC helpers** (`stac_helpers.R`): `ndc_get_all_sf()` (all result pages as `sf`, via `rNDC::ndc_get(mode = "fetch")`), `adc_get_all()` (all pages of AgroDataCube Fields/Soiltypes), `get_nitrogen_years()` (from the STAC items) and the process-level cache (`cache_get()`, `cache_set()`, TTL `ndc_cache_ttl`).
+5. **Project layers** (`projects.R`): the `lter` collection is fetched once per process and classified by `name` into 4 projects (`classify_lter`, `get_lter_data`); `snl` (~264k parcels) is fetched per map viewport (`fetch_snl_bbox`, zoom-gated, capped by `snl_fetch_limit`). NDVI statistics come from `ndvi-lter` / `ndvi-snl` (`fetch_ndvi_stats_monthly`, chosen by `detect_ndvi_collection` from the polygon's source name, e.g. `Nestboxes_3`, `SNL parcel_12`, and filtered on the polygon's `ndc_id`).
+6. **Polygons** (`polygons.R`): WKT columns, sequential source names, conversion of drawn/uploaded geometries (zip/gpkg/shp/geojson/kml); everything is kept in EPSG:4326 with a `wkt` column used by the retrieval code.
 
 Dataset -> rNDC function:
 
 | Dataset | Function |
 |---|---|
-| Agricultural fields, AHN, Soil map | `adc_url()` + `adc_get()` (AgroDataCube REST) |
+| Agricultural fields, Soil map, AHN | `adc_url()` + `adc_get()` (AgroDataCube REST) |
 | Weather | `get_closest_meteostation()`, `get_meteo_for_date()`, `get_meteo_for_long_period()` |
 | NDVI (Geodata) | `download_avg_ndvi_month()`, `download_avg_ndvi_stack()` (GroenMonitor WCS) |
 | NDVI (Statistics) | `ndc_get()` on `ndvi-lter` / `ndvi-snl` |
@@ -40,13 +44,19 @@ Dataset -> rNDC function:
 
 The rNDC endpoint is `rNDC::ndc_endpoint()` (default: the test server `ndc-test.containers.wur.nl`; override with `options(rNDC.endpoint = ...)`).
 
+Tests (`tests/testthat/`): `test-helpers.R` (pure helpers), `test-stac_helpers.R` and `test-projects.R` (stubbed HTTP), `test-retrieval.R` and `test-app.R` (server logic with `shiny::testServer(app_server, ...)`; rNDC functions that download files are replaced with `local_mocked_bindings(..., .package = "rNDC")`), `test-live.R` (opt-in).
+
 ## Gotchas
 
-- The rNDC raster functions (`get_landuse_raster`, `get_nitrogen_raster`) **stop with an error** when nothing matches instead of returning `NULL`; the app's "no raster returned" branches are only reached for empty stacks, and the real message arrives via the generic error handler.
-- `rNDC::ndc_get(mode = "sf")` converts only the first page of results (and warns if incomplete); the app uses its helper `ndc_get_all_sf()` (`mode = "fetch"` + `rstac::items_as_sf()`) when all items are needed. AgroDataCube Fields/Soiltypes are paged (default 50 features): use `adc_get_all()`.
-- NDVI statistics queries return all NDVI features that intersect the polygon (neighbouring SNL parcels too); results are filtered on the polygon's `ndc_id`.
-- `rNDC::ndc_trange()` formats a date as midnight UTC, so an end date excludes that day's observations unless one day is added.
-- `rNDC::get_closest_meteostation()` returns `closest_id = character(0)` (not `NULL`) when no station id is found.
-- One R process serves all Shiny sessions: avoid `setwd()` and shared fixed paths in `tempdir()`; `NDC_TOKEN`/`ADC_TOKEN` are process-wide globals.
+- The rNDC raster functions (`get_landuse_raster`, `get_nitrogen_raster`) **stop with an error** when nothing matches instead of returning `NULL`; the real message arrives via the generic error handler of `retrieve_and_save()`. Their results are lists: use `$stack`.
+- `rNDC::ndc_get(mode = "sf")` converts only the first page of results (and warns if incomplete); use `ndc_get_all_sf()` when all items are needed. AgroDataCube Fields/Soiltypes are paged (default 50 features, `page_offset` is the page number): use `adc_get_all()`.
+- NDVI statistics queries return all NDVI features that intersect the polygon (neighbouring SNL parcels too); the results are filtered on the polygon's `ndc_id`. Drawn and uploaded polygons have none (and no NDVI statistics).
+- `rNDC::ndc_trange()` formats a date as midnight UTC; the app extends the end of an NDVI period to 23:59:59.
+- `rNDC::get_closest_meteostation()` returns `closest_id = character(0)` (not `NULL`) when no station id is found. Weather observations have `"geometry": null` in the API response.
+- One R process serves all Shiny sessions: avoid `setwd()` and shared fixed paths in `tempdir()`; the cache and `Sys.getenv()` tokens are process-wide. `app_server()` reads the tokens when a session starts.
+- In `testServer()` tests, set the inputs (the first `session$setInputs()` flushes the initial observers, which reset the polygon selection) **before** setting `selected_polygons()`, and call `session$flushReact()` after setting a reactiveVal.
+- `months()` on a number needs lubridate's method: the `lubridate` import in `R/rNDC.Shiny-package.R` makes sure it is registered.
+- R code must be ASCII (non-ASCII is a warning in `R CMD check`): use `\u` escapes in strings. Files use LF line endings, as in rNDC.
+- Column names used in dplyr/leaflet formulas are declared with `utils::globalVariables()` in `R/rNDC.Shiny-package.R`.
 - "Vegetation structure" and "Ground water table" are shown in the menu as disabled "coming soon" entries.
-- `DESCRIPTION` only documents dependencies (`Imports`, `Remotes`); the Docker image installs this repository as an R package.
+- `CITATION.cff` lists the authors and version; update it together with `DESCRIPTION` when releasing.

@@ -1749,9 +1749,9 @@ app_server <- function(input, output, session) {
       if (!is.null(zipfile)) unlink(workdir, recursive = TRUE)
     }
 
-    # The no-data notice and message clearing are handled by the download
-    # pre-check observer; retrieve_and_save stays silent and just reports
-    # produced_any back to the caller.
+    # Show what happened to each dataset ("Retrieved: ...", "Failed: ... - reason") in the messages
+    # panel. The no-data notice is added by the download pre-check observer.
+    download_msgs(local_msgs)
 
     out <- list(
       datasets = results,
@@ -1799,7 +1799,8 @@ app_server <- function(input, output, session) {
         "No data is available within your selection. Please try a different area, time period, or dataset.",
         type = "warning", duration = 8
       )
-      download_msgs("No data is available within your selection. Please try a different area, time period, or dataset.")
+      download_msgs(c("No data is available within your selection. Please try a different area, time period, or dataset.",
+                      res$messages))
     } else {
       old_zip <- isolate(prepared_zip())
       if (!is.null(old_zip)) unlink(old_zip)
@@ -1832,7 +1833,7 @@ app_server <- function(input, output, session) {
     if (length(msgs) == 0) {
       p("Updates on dataset retrieval will appear here.", style = "color: grey; font-style: italic;")
     } else {
-      HTML(paste(msgs, collapse = "<br>"))
+      HTML(paste(htmltools::htmlEscape(msgs), collapse = "<br>"))
     }
   })
 

@@ -1,4 +1,21 @@
 # rNDC.Shiny 0.4.0
 
-* The repository is now an R package (`rNDC.Shiny`) that depends on [rNDC](https://github.com/LTER-LIFE/rNDC) (branch `texel26`). Launch the app with `ndc_gui()`.
-* The app code lives in `R/` (`app_ui()`, `app_server()` and helpers).
+## New
+
+* The repository is now an R package (`rNDC.Shiny`) that depends on [rNDC](https://github.com/LTER-LIFE/rNDC) (branch `texel26`). Launch the app with `ndc_gui()`; `ndc_app()` gives the app object (e.g. for Shiny Server).
+* `ADC_TOKEN` is optional: without it, the datasets from AgroDataCube (Weather, Soil map, AHN and Agricultural fields) are disabled.
+* The "Return data to R (close app)" button works again (it is shown in interactive R sessions).
+* The messages panel shows what happened to each dataset (retrieved, or failed and why), also when only part of the selection could be retrieved.
+* The Docker image installs the package, with `rNDC` from a configurable branch (`RNDC_REF`).
+* Offline tests (HTTP stubbed with webmockr), live tests, and the `R-CMD-check`, `live-checks` and `docker-build` GitHub Actions.
+
+## Fixes
+
+* NDVI rasters are retrieved for the month(s) of their row in the overview, not for what the input widgets happen to say when downloading.
+* NDVI statistics only contain the selected polygon's own feature (they used to include the neighbouring SNL parcels), and cover the whole last day of the period.
+* All pages of results are retrieved: the LTER layer, the NDVI statistics, and the AgroDataCube Fields and Soil map (which were cut off at 50 and 25 features).
+* AgroDataCube errors are reported with the message of the server.
+* A missing meteorological station is reported properly.
+* Downloads are safe when several people use the app at the same time (no `setwd()`, unique export folders, temporary files are removed).
+* The date and year inputs have current limits, and the NDVI months are checked (valid months, start not after end, no future months).
+* The nitrogen years are read from the NatureDataCube.
