@@ -25,22 +25,12 @@ available_datasets <- list(
   "Anthroposphere" = c("Agricultural fields", "Land Use")
 )
 
-dataset_api_map <- list(
-  "Agricultural fields" = "Fields",
-  "AHN" = "AHN",
-  "Soil map" = "Soiltypes",
-  "Weather" = NA,
-  "NDVI" = NA
-)
-
 all_dataset_names <- unique(unlist(available_datasets))
 
 # Defaults taken from rNDC. These are internal (unexported) constants of the
 # package, hence `:::`; ideally rNDC would export them.
 landuse_default_year   <- rNDC:::landuse_default_year
 nitrogen_layer_choices <- rNDC:::nitrogen_layer_choices
-# Years offered by the Nitrogen collections (see ?rNDC::get_nitrogen_raster)
-nitrogen_year_choices  <- c("2024", "2025", "2040")
 
 make_tab_id <- function(name) paste0(gsub("[^a-z0-9]+", "_", tolower(name)), "_tab")
 make_target_id <- function(name, tab) paste0("tab_target_", gsub("[^a-z0-9]+", "_", tolower(name)), "_", tolower(tab))
@@ -53,21 +43,20 @@ tabs_for_dataset <- function(name) {
 }
 default_tab_for_dataset <- function(name) tabs_for_dataset(name)[1]
 
-# ------------------------
-## Safe source helper ----
-# ------------------------
-safe_source <- function(path) {
-  tryCatch(source(path), error = function(e) NULL)
-}
-
-# ---------------------
+# --------------
 ## Tokens ----
-# ---------------
+# --------------
 mytoken <- Sys.getenv("NDC_TOKEN")
 if (!nzchar(mytoken)) stop("NDC_TOKEN environment variable is not set. Add it to your .env file.")
 
+# ADC_TOKEN is optional: without it only the AgroDataCube-based datasets are unavailable.
 agro_token <- Sys.getenv("ADC_TOKEN")
-if (!nzchar(agro_token)) stop("ADC_TOKEN environment variable is not set. Add it to your .env file.")
+adc_available <- nzchar(agro_token)
+adc_datasets <- c("Weather", "Soil map", "AHN", "Agricultural fields")
+if (!adc_available) {
+  warning("ADC_TOKEN is not set: Weather, Soil map, AHN and Agricultural fields are disabled.",
+          call. = FALSE)
+}
 # The ADC token is for AgroDataCube (agrodatacube.wur.nl): Soil map, AHN, Agricultural
 # fields and Weather. Those hit a different host than the NatureDataCube STAC API
 # and need the ADC token, not the NDC token (passed as `token` to rNDC::adc_get()).
@@ -150,17 +139,61 @@ adc_get_all <- function(option, params, token, page_size = 1000L, max_pages = 10
   res
 }
 
-# Fetch the whole LTER collection once and classify it. Returns an sf object
-# (transformed to 4326) or NULL on failure. Cached at session scope below.
+# Fetch the whole LTER collection once and classify it. Returns
+# list(data, error): `data` is an sf object (transformed to 4326) or NULL, and
+# `error` the failure message (NULL on success or when the collection is empty).
 fetch_lter_classified <- function() {
+  err <- NULL
   out <- tryCatch(
     ndc_get_all_sf(collection = ndc_lter_collection),
-    error = function(e) NULL
+    error = function(e) { err <<- conditionMessage(e); NULL }
   )
-  if (is.null(out) || nrow(out) == 0) return(NULL)
+  if (is.null(out) || nrow(out) == 0) return(list(data = NULL, error = err))
   if (is.na(sf::st_crs(out))) sf::st_crs(out) <- 4326
   out <- sf::st_transform(out, 4326)
-  classify_lter(out)
+  list(data = classify_lter(out), error = NULL)
+}
+
+# Process-level cache shared by all sessions (one R process serves them all), so
+# slowly-changing STAC lookups are done once rather than once per session.
+ndc_cache <- new.env()
+ndc_cache_ttl <- 3600  # seconds
+
+cache_get <- function(key) {
+  hit <- ndc_cache[[key]]
+  if (!is.null(hit) && difftime(Sys.time(), hit$time, units = "secs") < ndc_cache_ttl) hit$value else NULL
+}
+cache_set <- function(key, value) {
+  if (!is.null(value)) ndc_cache[[key]] <- list(value = value, time = Sys.time())
+  invisible(value)
+}
+
+# LTER project polygons: list(data, error) as returned by fetch_lter_classified().
+# Only successful fetches are cached.
+get_lter_data <- function() {
+  data <- cache_get("lter")
+  if (!is.null(data)) return(list(data = data, error = NULL))
+  res <- fetch_lter_classified()
+  cache_set("lter", res$data)
+  res
+}
+
+# Years for which nitrogen rasters exist: read from the STAC items of the
+# nitrogen collections (via rNDC), falling back to the known years.
+get_nitrogen_years <- function() {
+  years <- cache_get("nitrogen_years")
+  if (is.null(years)) {
+    years <- tryCatch({
+      y <- unlist(lapply(nitrogen_layer_choices, function(col) {
+        items <- rNDC::ndc_get(collection = col, mode = "fetch", limit = 100)
+        dplyr::bind_rows(lapply(items$features, rNDC::stac_feature_meta, asset_name = "wcs"))$year
+      }))
+      sort(unique(as.character(y[!is.na(y)])))
+    }, error = function(e) character(0))
+    if (length(years) == 0) return(c("2024", "2025", "2040"))  # fallback, not cached
+    cache_set("nitrogen_years", years)
+  }
+  years
 }
 
 # Fetch SNL parcels intersecting a bounding box (xmin, ymin, xmax, ymax in
@@ -1048,7 +1081,6 @@ server <- function(input, output, session) {
 
   drawn_features <- reactiveVal(NULL)
   selected_polygons <- reactiveVal(NULL)
-  selected_layers <- NULL  # compatibility alias for clean runApp() sessions
   fixed_polys <- reactiveVal(NULL)
   uploaded_polys <- reactiveVal(NULL)
   pending_gpkg <- reactiveVal(list())
@@ -1057,17 +1089,8 @@ server <- function(input, output, session) {
 
   # ---- Project-selection state (replaces the old fixed_layer switch) ----
   active_project <- reactiveVal(NULL)
-  lter_cache <- reactiveVal(NULL)
   snl_last_bbox <- reactiveVal(NULL)
   snl_status_msg <- reactiveVal(NULL)
-
-  get_lter_data <- function() {
-    cached <- lter_cache()
-    if (!is.null(cached)) return(cached)
-    fetched <- fetch_lter_classified()
-    if (!is.null(fetched)) lter_cache(fetched)
-    fetched
-  }
 
   overview <- reactiveVal(
     tibble::tibble(
@@ -1100,7 +1123,7 @@ server <- function(input, output, session) {
 
   dataset_info <- list(
     "Weather" = list(title = "Weather", description = "KNMI weather data for the selected area (daily aggregates).", notes = "Choose a date or a period."),
-    "Nitrogen" = list(title = "Nitrogen", description = "Nitrogen deposition layers (ntot, nox, nh3).", notes = "Select a year (2024, 2025, or 2040). Retrieval returns all three raster layers."),
+    "Nitrogen" = list(title = "Nitrogen", description = "Nitrogen deposition layers (ntot, nox, nh3).", notes = "Select a year. Retrieval returns all three raster layers."),
     "NDVI" = list(title = "NDVI", description = "Monthly average NDVI.", notes = "Statistics: monthly NDVI summaries per polygon for LTER/SNL project areas. Geodata: monthly average NDVI raster layers. Supports single-month or range queries."),
     "Vegetation structure" = list(title = "Vegetation structure", description = "Structural vegetation measurements.", notes = "Retrieval not yet wired in this simplified version."),
     "Ground water table" = list(title = "Ground water table", description = "Groundwater depth information.", notes = "Retrieval not yet wired in this version."),
@@ -1121,10 +1144,6 @@ server <- function(input, output, session) {
         footer = modalButton("Close")
       ))
     }, ignoreInit = TRUE)
-  })
-
-  observe({
-    selected_layers <<- selected_polygons()
   })
 
   assign_uploaded_colors_server <- function(up_sf) {
@@ -1244,6 +1263,13 @@ server <- function(input, output, session) {
 
   session$sendCustomMessage("ndc_toggle_add_button", FALSE)
 
+  if (!adc_available) {
+    showNotification(
+      "No ADC_TOKEN set: Weather, Soil map, AHN and Agricultural fields are unavailable.",
+      type = "warning", duration = 10
+    )
+  }
+
   observe({
     ds <- NULL
     try({ ds <- input$selected_dataset }, silent = TRUE)
@@ -1283,6 +1309,7 @@ server <- function(input, output, session) {
       }
 
       enabled <- isTRUE(date_ok)
+      if (!adc_available && ds %in% adc_datasets) enabled <- FALSE
     }
 
     session$sendCustomMessage("ndc_toggle_add_button", enabled)
@@ -1427,9 +1454,14 @@ server <- function(input, output, session) {
     # ---- LTER: pull the chosen class from the cached, classified collection ----
     if (startsWith(key, "lter:")) {
       this_class <- sub("^lter:", "", key)
-      lter <- get_lter_data()
+      lter_res <- get_lter_data()
+      lter <- lter_res$data
       if (is.null(lter)) {
-        showNotification("Could not load LTER data from the STAC endpoint.", type = "error")
+        showNotification(
+          paste0("Could not load LTER data from the STAC endpoint",
+                 if (!is.null(lter_res$error)) paste0(": ", lter_res$error) else " (empty collection)", "."),
+          type = "error", duration = 10
+        )
         return(NULL)
       }
       poly <- lter[!is.na(lter$project_class) & lter$project_class == this_class, , drop = FALSE]
@@ -2051,6 +2083,10 @@ server <- function(input, output, session) {
 
   build_controls_for <- function(ds, tab = NULL) {
     if (is.null(ds) || ds == "") return(NULL)
+    if (!adc_available && ds %in% adc_datasets) {
+      return(tagList(tags$div(class = "dataset-controls",
+                              helpText("This dataset needs an AgroDataCube token: set ADC_TOKEN and restart the app."))))
+    }
     this_year <- as.integer(format(Sys.Date(), "%Y"))
     last_year <- this_year - 1L  # latest complete year (AgroDataCube fields: 2017-last year)
 
@@ -2060,8 +2096,8 @@ server <- function(input, output, session) {
     } else if (ds == "Nitrogen") {
       tagList(tags$div(
         class = "dataset-controls",
-        selectInput("nitrogen_year", "Select year:", choices = nitrogen_year_choices,
-                    selected = nitrogen_year_choices[1], multiple = FALSE),
+        selectInput("nitrogen_year", "Select year:", choices = get_nitrogen_years(),
+                    selected = get_nitrogen_years()[1], multiple = FALSE),
         tags$div(style = "margin-top: 6px; color: #5a6472;",
                  paste0("Retrieval will return all nitrogen rasters: ",
                         paste(nitrogen_layer_choices, collapse = ", "), "."))
@@ -2129,6 +2165,10 @@ server <- function(input, output, session) {
       return(NULL)
     }
     req(input$selected_dataset)
+    if (!adc_available && input$selected_dataset %in% adc_datasets) {
+      showNotification("This dataset needs an AgroDataCube token (ADC_TOKEN).", type = "error", duration = 5)
+      return(NULL)
+    }
 
     year_val <- NA_integer_
     date_from_val <- as.Date(NA)
@@ -2310,47 +2350,6 @@ server <- function(input, output, session) {
     update_selected_highlights()
     showNotification("Overview cleared", type = "message")
   }, ignoreInit = TRUE)
-
-  write_sf_safe <- function(obj, outfile, output_kind = c("statistics", "spatial")) {
-    output_kind <- match.arg(output_kind)
-
-    if (is.null(obj)) return(FALSE)
-
-    if (output_kind == "statistics") {
-      df <- if (inherits(obj, "sf")) {
-        sf::st_drop_geometry(obj)
-      } else if (inherits(obj, "data.frame")) {
-        obj
-      } else if (inherits(obj, "SpatRaster")) {
-        as.data.frame(obj, xy = TRUE, na.rm = FALSE)
-      } else if (inherits(obj, "SpatVector")) {
-        as.data.frame(obj)
-      } else {
-        tryCatch(as.data.frame(obj), error = function(e) NULL)
-      }
-
-      if (is.null(df) || nrow(df) == 0) return(FALSE)
-      utils::write.csv(df, outfile, row.names = FALSE)
-      return(TRUE)
-    }
-
-    if (inherits(obj, "sf")) {
-      sf::st_write(obj, outfile, delete_dsn = TRUE, quiet = TRUE)
-      return(TRUE)
-    }
-
-    if (inherits(obj, "SpatRaster")) {
-      terra::writeRaster(obj, outfile, overwrite = TRUE)
-      return(TRUE)
-    }
-
-    if (inherits(obj, "SpatVector")) {
-      terra::writeVector(obj, outfile, overwrite = TRUE)
-      return(TRUE)
-    }
-
-    FALSE
-  }
 
   write_sf_safe <- function(obj, outfile) {
     if (is.null(obj)) return(FALSE)
@@ -2850,10 +2849,10 @@ server <- function(input, output, session) {
           actionButton("check_and_download", "Download dataset(s)", class = "btn-custom"),
           div(style = "position:absolute; left:-9999px; width:1px; height:1px; overflow:hidden;",
               downloadButton("download_data", "Download dataset(s)", class = "btn-custom")),
-          # "Return data to R" is temporarily disabled (greyed out but visible).
-          actionButton("return_to_r", "Return data to R (close app)", class = "btn-custom",
-                       disabled = "disabled",
-                       style = "opacity:0.5; cursor:not-allowed; pointer-events:none;"))
+          # "Return data to R" stops the app and hands the data to the calling R
+          # session (`x <- shiny::runApp(...)`). Only offered in an interactive
+          # session: in a container it would just shut the app down.
+          if (interactive()) actionButton("return_to_r", "Return data to R (close app)", class = "btn-custom"))
     }
   })
 

@@ -14,10 +14,10 @@ Steps:
 
 - Install the `rNDC` package, which the app relies on: `remotes::install_github("LTER-LIFE/rNDC", ref = "texel26")`.
 - Make sure your working directory is the folder you want to work from (this can be changed with `setwd("path/to/workingdirectory")`; `getwd()` shows the current one).
-- Set your tokens in the R session, e.g. `Sys.setenv(NDC_TOKEN = "...", ADC_TOKEN = "...")`.
+- Set your tokens in the R session, e.g. `Sys.setenv(NDC_TOKEN = "...", ADC_TOKEN = "...")`. `NDC_TOKEN` is required; `ADC_TOKEN` is only needed for the AgroDataCube-based datasets (Weather, Soil map, AHN, Agricultural fields).
 - Launch the app from within R with `data_ndc <- shiny::runApp("inst/shiny/naturedatacube_app")` (adjust the path to where this repository is located).
 
-Launching the app in this way ensures that the output generated through the Shiny interface is returned and stored in the R variable `data_ndc` (this can be changed to a different object name). This allows you to continue working with the retrieved data in R after closing the app.
+Launching the app in this way ensures that the output generated through the Shiny interface is returned and stored in the R variable `data_ndc` (this can be changed to a different object name). This allows you to continue working with the retrieved data in R after closing the app: click "Return data to R (close app)" in the app (this button is only shown in interactive R sessions).
 
 To retrieve data from the `NatureDataCube`, an API token is required. Make sure your token is available in your R session before requesting data.
 

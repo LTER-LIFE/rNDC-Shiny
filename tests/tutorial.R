@@ -33,6 +33,7 @@ library(dplyr)
 # - clutch_size: number of eggs
 # - year
 
+# (the CSV is not part of this repository: put it in a `data/` folder first)
 data <- read.csv("data/first_nests_HV.csv")
 
 # ============================================================
@@ -68,8 +69,14 @@ data <- data %>%
 # but we’re focusing on weather today.
 #
 # Once you finish, the data will be stored in `weather_data`.
+#
+# Requirements:
+# - the `rNDC` package (remotes::install_github("LTER-LIFE/rNDC", ref = "texel26"))
+# - your tokens in this R session, e.g. Sys.setenv(NDC_TOKEN = "...", ADC_TOKEN = "...")
+# - run this from the root of the rNDC-Shiny repository, in an interactive R
+#   session (the "Return data to R" button is only shown in interactive sessions)
 
-weather_data <- runApp("R/naturedatacube_app/app.R")
+weather_data <- shiny::runApp("inst/shiny/naturedatacube_app")
 
 # Shiny app steps:
 # 1. Select project: Nestboxes
@@ -77,7 +84,7 @@ weather_data <- runApp("R/naturedatacube_app/app.R")
 # 3. Pick "Weather" under available datasets
 # 4. Select the period: 2024-01-01 → 2025-01-01
 # 5. Click "Add to overview"
-# 6. Click "Return data to R" and close the app
+# 6. Click "Return data to R (close app)"
 #
 # Now your weather data lives in `weather_data`! 🎉
 
