@@ -96,3 +96,28 @@ test_that("get_nitrogen_years falls back to the known years, without caching the
   expect_equal(get_nitrogen_years(), c("2024", "2025", "2040"))
   expect_null(cache_get("nitrogen_years"))
 })
+
+test_that("get_landuse_years reads the years of the land use items, and falls back to the default year", {
+  local_clean_cache()
+  local_stac_api(list(list(raster_item("a", "2024-01-01"), raster_item("b", "2023-01-01"))))
+  expect_equal(get_landuse_years(), c("2023", "2024"))
+  expect_equal(cache_get("landuse_years"), c("2023", "2024"))
+  expect_equal(unlist(last_request_body()$collections), ndc_landuse_collection)
+
+  local_clean_cache()
+  local_stac_api(list(list()), status = 500L)
+  expect_equal(get_landuse_years(), "2024")
+  expect_null(cache_get("landuse_years"))
+})
+
+test_that("years are cached per collection set", {
+  local_clean_cache()
+  local_stac_api(list(list(raster_item("a", "2030-01-01"))))
+  expect_equal(get_raster_years("x", "k1", "none"), "2030")
+  expect_equal(get_raster_years("y", "k2", "none"), "2030")
+  expect_equal(sum(grepl("/search$", request_uris())), 2)  # one search per collection
+  expect_false(is.null(cache_get("k1")) || is.null(cache_get("k2")))
+  n <- length(request_uris())
+  get_raster_years("x", "k1", "none")  # served from the cache
+  expect_length(request_uris(), n)
+})

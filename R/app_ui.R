@@ -488,6 +488,7 @@ app_ui <- function() {
         uiOutput("download_messages"),
         hr(),
         uiOutput("dataset_metadata"),
+        uiOutput("availability"),
         tags$div(style = "margin-top:18px;", actionButton("add_dataset", "Add to overview", class = "btn-custom"))
       )
     ),

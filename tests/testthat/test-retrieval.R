@@ -235,3 +235,20 @@ test_that("two different polygons with the same name both end up in the download
     expect_false(anyDuplicated(summary$file_path[!is.na(summary$file_path)]) > 0)
   })
 })
+
+test_that("the export folder is returned only when it still exists", {
+  local_webmock()
+  webmockr::stub_request("get", uri_regex = adc_re("soiltypes")) |>
+    webmockr::to_return(body = json_body(geojson_features(1:2, "soiltype")), headers = json_header)
+
+  with_overview(overview_row("Soil map"), {
+    zipped <- retrieve_and_save(zipfile = zip, save_files = TRUE)
+    expect_null(zipped$out_dir)  # removed after zipping
+    expect_equal(zipped$zipfile, zip)
+
+    kept <- retrieve_and_save(save_files = TRUE)  # no zip: the folder is the result
+    withr::defer(unlink(kept$out_dir, recursive = TRUE))
+    expect_true(dir.exists(kept$out_dir))
+    expect_true(file.exists(file.path(kept$out_dir, "download_summary.csv")))
+  })
+})

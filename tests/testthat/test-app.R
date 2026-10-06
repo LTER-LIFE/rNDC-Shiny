@@ -140,3 +140,38 @@ test_that("the same dataset is not added twice for the same polygon", {
     expect_equal(overview()$dataset, "Land Use")
   })
 })
+
+test_that("Land Use uses the selected year, or the default until the year input exists", {
+  withr::local_envvar(NDC_TOKEN = "t", ADC_TOKEN = "t")
+  sel <- selected_polygon()
+
+  shiny::testServer(app_server, {
+    session$setInputs(selected_dataset = "Land Use", landuse_year = "2023")
+    selected_polygons(sel)
+    session$flushReact()
+    session$setInputs(add_dataset = 1)
+    session$flushReact()
+    expect_equal(overview()$year, 2023L)
+  })
+})
+
+test_that("NDVI months before the first observations are clipped or rejected", {
+  withr::local_envvar(NDC_TOKEN = "t", ADC_TOKEN = "t")
+  sel <- selected_polygon()
+
+  shiny::testServer(app_server, {
+    session$setInputs(selected_dataset = "NDVI", ndvi_mode = "range",
+                      ndvi_from_year = 2015, ndvi_from_month = 1, ndvi_to_year = 2016, ndvi_to_month = 12)
+    selected_polygons(sel)
+    session$flushReact()
+    session$setInputs(add_dataset = 1)  # the whole period is before May 2017
+    session$flushReact()
+    expect_equal(nrow(overview()), 0)
+
+    session$setInputs(ndvi_to_month = 12, ndvi_to_year = 2017)
+    session$setInputs(add_dataset = 2)  # starts before, ends after: clipped to May 2017
+    session$flushReact()
+    expect_equal(overview()$date_from, as.Date("2017-05-01"))
+    expect_equal(overview()$date_to, as.Date("2017-12-31"))
+  })
+})

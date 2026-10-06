@@ -65,6 +65,8 @@ See [`examples/tutorial.R`](examples/tutorial.R) for a tutorial that combines bi
 
 \* The NDVI rasters come from GroenMonitor, which needs no token; the app itself needs `NDC_TOKEN` to load the project areas.
 
+For Land Use and Nitrogen, the app tells you whether the selected area has data for the chosen year before you add the dataset.
+
 Areas of interest can be one of the project areas (LTER projects, or SNL parcels), polygons you draw on the map, or polygons you upload (GeoPackage, shapefile, GeoJSON, KML, or a zip file with these).
 
 ## Running with Docker or Podman

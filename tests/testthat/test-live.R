@@ -56,3 +56,35 @@ test_that("AgroDataCube results are fetched completely", {
                      token = Sys.getenv("ADC_TOKEN"))
   expect_gt(length(res$features), 100)
 })
+
+test_that("there is data at the earliest dates and years that the app offers", {
+  skip_unless_live()
+  # NDVI: GroenMonitor starts on 2017-05-26 (ndvi_min_month); it is not downloaded here, as that takes a minute.
+  poly <- "POLYGON((5.70 52.00,5.72 52.00,5.72 52.02,5.70 52.02,5.70 52.00))"
+  fields <- adc_get_all("Fields", c(geometry = poly, epsg = "4326", year = as.character(fields_min_year),
+                                    output_epsg = "4326"), token = Sys.getenv("ADC_TOKEN"))
+  expect_gt(length(fields$features), 0)
+
+  station <- rNDC::get_closest_meteostation(poly, token = Sys.getenv("ADC_TOKEN"))$closest_id
+  meteo <- suppressWarnings(rNDC::get_meteo_for_date(station, weather_min_date, Sys.getenv("ADC_TOKEN")))
+  expect_false(is.null(meteo))
+})
+
+test_that("the land use years come from the NatureDataCube", {
+  skip_unless_live()
+  local_clean_cache()
+  expect_true(as.character(landuse_default_year) %in% get_landuse_years())
+})
+
+test_that("the availability check finds raster items for a place in the Netherlands, and none elsewhere", {
+  skip_unless_live()
+  local_clean_cache()
+  here <- sf::st_geometry(sf::st_as_sf(sf::st_as_sfc(sf::st_bbox(
+    c(xmin = 5.74, ymin = 52.05, xmax = 5.76, ymax = 52.07), crs = sf::st_crs(4326)))))
+  elsewhere <- sf::st_geometry(sf::st_as_sf(sf::st_as_sfc(sf::st_bbox(
+    c(xmin = -0.2, ymin = 51.4, xmax = -0.1, ymax = 51.5), crs = sf::st_crs(4326)))))  # London
+
+  expect_gt(count_items(ndc_landuse_collection, here), 0)
+  expect_equal(count_items(ndc_landuse_collection, elsewhere), 0)
+  expect_true(all(items_in_area(nitrogen_layer_choices, here, "2024") > 0))
+})

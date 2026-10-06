@@ -6,6 +6,8 @@
 * `ADC_TOKEN` is optional: without it, the datasets from AgroDataCube (Weather, Soil map, AHN and Agricultural fields) are disabled.
 * The "Return data to R (close app)" button works again (it is shown in interactive R sessions).
 * The messages panel shows what happened to each dataset (retrieved, or failed and why), also when only part of the selection could be retrieved.
+* The app shows whether the selected area has Land Use or Nitrogen data (for the selected year) before you add the dataset.
+* The Land Use year can be chosen (the years come from the NatureDataCube; only 2024 is available for now).
 * The Docker image installs the package, with `rNDC` from a configurable branch (`RNDC_REF`).
 * Offline tests (HTTP stubbed with webmockr), live tests, and the `R-CMD-check`, `live-checks` and `docker-build` GitHub Actions.
 
@@ -18,5 +20,10 @@
 * AgroDataCube errors are reported with the message of the server.
 * A missing meteorological station is reported properly.
 * Downloads are safe when several people use the app at the same time (no `setwd()`, unique export folders, temporary files are removed).
-* The date and year inputs have current limits, and the NDVI months are checked (valid months, start not after end, no future months).
+* The date and year inputs have current limits (Weather from 1970, Agricultural fields from 2009, NDVI from May 2017: the first month with data, checked against the services), and the NDVI months are checked (valid months, start not after end, no future months, nothing before May 2017).
 * The nitrogen years are read from the NatureDataCube.
+
+## Internal
+
+* The server code is split into one function per area (`R/server_*.R`), and the retrieval into one function per dataset (`R/retrieval.R`).
+* The map, upload, project (LTER and SNL), overview and download parts of the server are now covered by tests.

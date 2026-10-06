@@ -44,20 +44,50 @@ cache_set <- function(key, value) {
   invisible(value)
 }
 
-# Years for which nitrogen rasters exist: read from the STAC items of the
-# nitrogen collections (via rNDC), falling back to the known years.
-get_nitrogen_years <- function() {
-  years <- cache_get("nitrogen_years")
+# Number of STAC items of `collection` that intersect `roi` (an sf/sfc object), optionally within `trange`,
+# via rNDC::ndc_count(). NA if the request fails. Cached per collection, area and time range.
+count_items <- function(collection, roi, trange = NULL) {
+  key <- paste("count", collection, trange, sf::st_as_text(sf::st_geometry(roi))[1], sep = "|")
+  n <- cache_get(key)
+  if (!is.null(n)) return(n)
+
+  n <- tryCatch(as.numeric(rNDC::ndc_count(collection = collection, roi = roi, trange = trange)),
+                error = function(e) NA_real_)
+  if (length(n) != 1 || is.na(n)) return(NA_real_)
+  cache_set(key, n)
+}
+
+# The counts of `count_items()` for several collections (named by collection), for one year if given
+items_in_area <- function(collections, roi, year = NULL) {
+  trange <- if (!is.null(year) && nzchar(as.character(year))) {
+    paste0(year, "-01-01T00:00:00Z/", year, "-12-31T23:59:59Z")
+  }
+  vapply(collections, function(collection) count_items(collection, roi, trange), numeric(1))
+}
+
+# Years for which rasters exist: read from the STAC items of the collection(s) (via rNDC), falling back to
+# the known years. The nitrogen layers are one collection each.
+get_raster_years <- function(collections, key, fallback) {
+  years <- cache_get(key)
   if (is.null(years)) {
     years <- tryCatch({
-      y <- unlist(lapply(nitrogen_layer_choices, function(col) {
+      y <- unlist(lapply(collections, function(col) {
         items <- rNDC::ndc_get(collection = col, mode = "fetch", limit = 100)
+        if (length(items$features) == 0) return(character(0))
         dplyr::bind_rows(lapply(items$features, rNDC::stac_feature_meta, asset_name = "wcs"))$year
       }))
       sort(unique(as.character(y[!is.na(y)])))
     }, error = function(e) character(0))
-    if (length(years) == 0) return(c("2024", "2025", "2040"))  # fallback, not cached
-    cache_set("nitrogen_years", years)
+    if (length(years) == 0) return(fallback)  # not cached
+    cache_set(key, years)
   }
   years
+}
+
+get_nitrogen_years <- function() {
+  get_raster_years(nitrogen_layer_choices, "nitrogen_years", c("2024", "2025", "2040"))
+}
+
+get_landuse_years <- function() {
+  get_raster_years(ndc_landuse_collection, "landuse_years", as.character(landuse_default_year))
 }

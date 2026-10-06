@@ -17,6 +17,38 @@ selected_polygon <- function(name = "Own polygon", ...) {
             geometry = sf::st_as_sfc(wkt_square, crs = 4326))
 }
 
+# A fixed (project) polygon as the app keeps them: layer_id, source_name, wkt and a square geometry
+fixed_square <- function(layer_id, x, y, name = paste0("Project_", layer_id), size = 0.01) {
+  geom <- sf::st_as_sfc(sf::st_bbox(c(xmin = x, ymin = y, xmax = x + size, ymax = y + size), crs = sf::st_crs(4326)))
+  sf::st_sf(layer_id = as.integer(layer_id), source_name = name, wkt = sf::st_as_text(geom), geometry = geom)
+}
+
+# Run `code` in the server with tokens set. The first setInputs() runs the initial observers, which reset
+# the selection and the project layers, so this does one before running `code`. The code can use the
+# objects of the server (reactiveVals, input, output, session) and the helpers of the test file. The objects of
+# the test are copied: to record what a mock was called with, mutate an environment (`rec$calls <- ...`)
+# instead of reassigning a variable with `<<-`.
+with_server <- function(code, env = parent.frame()) {
+  withr::local_envvar(NDC_TOKEN = "t", ADC_TOKEN = "t", .local_envir = env)
+  code <- substitute(code)
+  scopes <- list()  # the environments of the test, outermost first, up to the package namespace
+  e <- env
+  while (!identical(e, topenv(env)) && !identical(e, emptyenv())) {
+    scopes <- c(list(e), scopes)
+    e <- parent.env(e)
+  }
+  shiny::testServer(app_server, {
+    session$setInputs(selected_dataset = "Land Use")
+    session$flushReact()
+    scope <- new.env(parent = environment())
+    for (s in scopes) list2env(as.list(s, all.names = TRUE), scope)
+    eval(code, scope)
+  })
+}
+
+# A map click as leaflet sends it (the nonce makes repeated clicks on the same spot distinct inputs)
+map_click <- function(lng, lat, id = "") list(lng = lng, lat = lat, id = id, nonce = stats::runif(1))
+
 # One row of the overview (what the app collects for each dataset and polygon)
 overview_row <- function(dataset, view = "Geodata", year = NA_integer_,
                          from = as.Date(NA), to = as.Date(NA), name = "Own polygon") {
