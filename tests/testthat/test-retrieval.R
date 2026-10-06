@@ -1,12 +1,5 @@
 # retrieve_and_save(): the retrieval of the datasets in the overview, with the APIs stubbed or mocked.
 
-overview_row <- function(dataset, view = "Geodata", year = NA_integer_,
-                         from = as.Date(NA), to = as.Date(NA), name = "Own polygon") {
-  poly <- selected_polygon()
-  tibble::tibble(dataset = dataset, view = view, year = year, polygon = name, wkt = wkt_square,
-                 polygon_sf = list(poly), date_from = from, date_to = to)
-}
-
 export_dirs <- function() list.files(tempdir(), "^ndc_export_")
 
 # Run `code` inside the server with `rows` in the overview; `code` can use retrieve_and_save() and `zip`.

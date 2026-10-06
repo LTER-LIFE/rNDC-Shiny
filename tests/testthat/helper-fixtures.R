@@ -17,6 +17,13 @@ selected_polygon <- function(name = "Own polygon", ...) {
             geometry = sf::st_as_sfc(wkt_square, crs = 4326))
 }
 
+# One row of the overview (what the app collects for each dataset and polygon)
+overview_row <- function(dataset, view = "Geodata", year = NA_integer_,
+                         from = as.Date(NA), to = as.Date(NA), name = "Own polygon") {
+  tibble::tibble(dataset = dataset, view = view, year = year, polygon = name, wkt = wkt_square,
+                 polygon_sf = list(selected_polygon()), date_from = from, date_to = to)
+}
+
 # ---- webmockr ----
 
 local_webmock <- function(env = parent.frame()) {
