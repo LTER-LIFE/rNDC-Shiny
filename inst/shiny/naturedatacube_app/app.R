@@ -2094,10 +2094,11 @@ server <- function(input, output, session) {
       tagList(tags$div(class = "dataset-controls", numericInput("selected_year", "Select year:", value = last_year, min = 2017, max = last_year)))
 
     } else if (ds == "Nitrogen") {
+      nitrogen_years <- get_nitrogen_years()
       tagList(tags$div(
         class = "dataset-controls",
-        selectInput("nitrogen_year", "Select year:", choices = get_nitrogen_years(),
-                    selected = get_nitrogen_years()[1], multiple = FALSE),
+        selectInput("nitrogen_year", "Select year:", choices = nitrogen_years,
+                    selected = nitrogen_years[1], multiple = FALSE),
         tags$div(style = "margin-top: 6px; color: #5a6472;",
                  paste0("Retrieval will return all nitrogen rasters: ",
                         paste(nitrogen_layer_choices, collapse = ", "), "."))
