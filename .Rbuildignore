@@ -1,0 +1,14 @@
+^CLAUDE\.md$
+^aidecl\.yaml$
+^examples$
+^\.github$
+^\.idea$
+^\.Rproj\.user$
+^.*\.Rproj$
+^LICENSE$
+^tools$
+^CITATION\.cff$
+^Dockerfile$
+^compose\.yaml$
+^\.dockerignore$
+^\.env
