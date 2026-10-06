@@ -1,4 +1,4 @@
 library(testthat)
-library(rNDC.GUI)
+library(rNDC.Shiny)
 
-test_check("rNDC.GUI")
+test_check("rNDC.Shiny")

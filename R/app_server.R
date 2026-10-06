@@ -1852,7 +1852,7 @@ app_server <- function(input, output, session) {
 
   observeEvent(input$open_guide, {
     read_readme <- function() {
-      p <- system.file("app", "NatureDataCube_README.txt", package = "rNDC.GUI")
+      p <- system.file("app", "NatureDataCube_README.txt", package = "rNDC.Shiny")
       if (nzchar(p) && file.exists(p)) {
         txt <- tryCatch(readLines(p, warn = FALSE), error = function(e) NULL)
         if (!is.null(txt)) return(paste(txt, collapse = "<br>"))

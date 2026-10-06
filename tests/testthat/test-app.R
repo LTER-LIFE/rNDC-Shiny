@@ -22,8 +22,8 @@ test_that("ndc_setup() sets the proxy path from SHINY_APP_BASE_URL", {
 test_that("ndc_app() returns a Shiny app and the bundled resources exist", {
   withr::local_envvar(NDC_TOKEN = "t", ADC_TOKEN = "t")
   expect_s3_class(ndc_app(), "shiny.appobj")
-  expect_true(file.exists(system.file("app", "www", "LTER-LIFE-logo.png", package = "rNDC.GUI")))
-  expect_true(file.exists(system.file("app", "NatureDataCube_README.txt", package = "rNDC.GUI")))
+  expect_true(file.exists(system.file("app", "www", "LTER-LIFE-logo.png", package = "rNDC.Shiny")))
+  expect_true(file.exists(system.file("app", "NatureDataCube_README.txt", package = "rNDC.Shiny")))
 })
 
 test_that("the user interface can be built", {

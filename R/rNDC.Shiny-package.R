@@ -1,4 +1,4 @@
-#' rNDC.GUI: graphical user interface to LTER-LIFE's NatureDataCube
+#' rNDC.Shiny: graphical user interface to LTER-LIFE's NatureDataCube
 #'
 #' A Shiny app to find and get data from the NatureDataCube (and the related AgroDataCube and
 #' GroenMonitor services), built on the functions of the \pkg{rNDC} package. Start it with [ndc_gui()].

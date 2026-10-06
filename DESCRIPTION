@@ -1,4 +1,4 @@
-Package: rNDC.GUI
+Package: rNDC.Shiny
 Title: Graphical user interface to LTER-LIFE's NatureDataCube
 Version: 0.4.0
 Date: 2026-10-06

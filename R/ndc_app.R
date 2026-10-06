@@ -15,7 +15,7 @@
 
 ndc_app <- function() {
   ndc_setup()
-  shiny::addResourcePath("ndc-www", system.file("app", "www", package = "rNDC.GUI"))
+  shiny::addResourcePath("ndc-www", system.file("app", "www", package = "rNDC.Shiny"))
   shiny::shinyApp(app_ui(), app_server)
 }
 

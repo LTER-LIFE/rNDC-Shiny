@@ -71,11 +71,11 @@ data <- data %>%
 # Once you finish, the data will be stored in `weather_data`.
 #
 # Requirements:
-# - the `rNDC.GUI` package (remotes::install_github("LTER-LIFE/rNDC-Shiny")), which installs `rNDC`
+# - the `rNDC.Shiny` package (remotes::install_github("LTER-LIFE/rNDC-Shiny")), which installs `rNDC`
 # - your tokens in this R session, e.g. Sys.setenv(NDC_TOKEN = "...", ADC_TOKEN = "...")
 # - an interactive R session (the "Return data to R" button is only shown in interactive sessions)
 
-weather_data <- rNDC.GUI::ndc_gui()
+weather_data <- rNDC.Shiny::ndc_gui()
 
 # Shiny app steps:
 # 1. Select project: Nestboxes
