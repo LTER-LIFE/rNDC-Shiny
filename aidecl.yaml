@@ -4,7 +4,7 @@ project:
   content_type: "software"
 ai_usage:
   used: true
-  summary: "Claude Code was used, on request of the maintainer, to turn the repository into an R package, to restructure and refactor the code of the Shiny app, to find and fix bugs, to write the automated tests, the CI workflows and the Docker setup, and to write the documentation. The maintainer specified the tasks and decides which changes are committed."
+  summary: "Claude Code was used, on request of the maintainer, to restructure and refactor the code of the Shiny app, to find and fix bugs, to write the automated tests, the CI workflows and the Docker setup, and to review the documentation. The maintainer specified the tasks and decides which changes are committed."
   level: "extensive"
   activities:
     - code_generation
@@ -15,8 +15,13 @@ ai_usage:
     - documentation
     - code_review
   tools:
+    - name: "Windsurf"
+      type: "assistant"
+      level: "moderate"
+      contribution: "Code completion within Positron IDE."
     - name: "Claude Code Sonnet 5.5"
       type: "assistant"
+      level: "extensive"
       contribution: "Package conversion, refactoring, bug fixes, tests, CI and Docker setup, and documentation."
 declaration:
   date: "2026-10-07"
