@@ -174,10 +174,6 @@ app_ui <- function() {
         .ndc-leaf { margin: 6px 0 6px 10px; padding: 4px 8px 4px 12px; border-left: 2px solid #e6eef6; font-weight: 600; color: #2d7da6; font-size: 14px; }
         .ndc-leaf:hover { background: #eef4fb; }
         .ndc-leaf.selected { color: #1f5a8a; }
-        .snl-spinner { display: inline-block; width: 11px; height: 11px; margin-right: 7px; vertical-align: -1px;
-          border: 2px solid rgba(31,90,138,0.25); border-top-color: #1f5a8a; border-radius: 50%;
-          animation: snl-spin 0.7s linear infinite; }
-        @keyframes snl-spin { to { transform: rotate(360deg); } }
         .nav-tabs a.disabled {
           color: #999 !important;
           pointer-events: none;
@@ -328,9 +324,6 @@ app_ui <- function() {
             }
           }, 150);
         });
-        Shiny.addCustomMessageHandler('ndc_force_clear_fixed_sidebar', function() {
-          document.querySelectorAll('.fixed-item').forEach(function(el){ el.classList.remove('selected'); });
-        });
         Shiny.addCustomMessageHandler('ndc_select_dataset', function(value) {
           document.querySelectorAll('.ndc-ds:not(.fixed-item)').forEach(function(el){ el.classList.remove('selected');});
           if (!value) return;
@@ -392,14 +385,10 @@ app_ui <- function() {
                      tags$summary("Projects"),
                      tags$details(class = "ndc-subcategory",
                                   tags$summary("LTER sites"),
-                                  tags$a(id = "proj-lter-Light_on_Nature", class = "fixed-item ndc-ds", href = "#",
-                                         onclick = HTML("ndcSelectProject(this, 'lter:Light on Nature'); return false;"), "Light on Nature"),
-                                  tags$a(id = "proj-lter-Loobos", class = "fixed-item ndc-ds", href = "#",
-                                         onclick = HTML("ndcSelectProject(this, 'lter:Loobos'); return false;"), "Loobos"),
-                                  tags$a(id = "proj-lter-Nestboxes", class = "fixed-item ndc-ds", href = "#",
-                                         onclick = HTML("ndcSelectProject(this, 'lter:Nestboxes'); return false;"), "Nestboxes"),
-                                  tags$a(id = "proj-lter-Nutnet", class = "fixed-item ndc-ds", href = "#",
-                                         onclick = HTML("ndcSelectProject(this, 'lter:Nutnet'); return false;"), "Nutnet")
+                                  lapply(lter_class_levels, function(cls) {
+                                    tags$a(id = paste0("proj-lter-", gsub(" ", "_", cls)), class = "fixed-item ndc-ds", href = "#",
+                                           onclick = HTML(sprintf("ndcSelectProject(this, 'lter:%s'); return false;", cls)), cls)
+                                  })
                      ),
                      tags$a(id = "proj-snl", class = "fixed-item ndc-ds ndc-leaf", href = "#",
                             onclick = HTML("ndcSelectProject(this, 'snl'); return false;"), "SNL sites")

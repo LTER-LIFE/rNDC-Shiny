@@ -140,15 +140,10 @@ server_map <- function(input, output, session, state, helpers) {
 
   observeEvent(input$map_draw_new_feature, {
     feat <- input$map_draw_new_feature
-    cur_fixed_max <- if (!is.null(fixed_polys())) max(as.integer(fixed_polys()$layer_id), na.rm = TRUE) else 0
-    cur_uploaded_max <- if (!is.null(uploaded_polys())) max(as.integer(uploaded_polys()$layer_id), na.rm = TRUE) else 0
-    cur_drawn_max <- if (!is.null(drawn_features())) max(as.integer(drawn_features()$layer_id), na.rm = TRUE) else 0
-    start_id <- max(cur_fixed_max, cur_uploaded_max, cur_drawn_max, 0) + 1
+    start_id <- next_layer_id(fixed_polys(), uploaded_polys(), drawn_features())
 
     clear_project_selection_state()
-    session$sendCustomMessage("ndc_force_clear_fixed_sidebar", NULL)
     clear_map_polygons(except = c("drawn"))
-    session$sendCustomMessage("ndc_select_fixed", NULL)
 
     poly_sf <- convert_drawn_to_sf(feat, start_layer_id = start_id)
     req(poly_sf)

@@ -34,6 +34,12 @@ assign_sequential_source_names <- function(sf_obj, base_name, overview_df, fixed
   sf_obj
 }
 
+# The layer id for the next polygon: one more than the largest id in the given sf objects (NULL is none)
+next_layer_id <- function(...) {
+  ids <- unlist(lapply(list(...), function(x) if (is.null(x) || nrow(x) == 0) integer(0) else as.integer(x$layer_id)))
+  max(c(ids, 0L), na.rm = TRUE) + 1L
+}
+
 convert_drawn_to_sf <- function(feat, start_layer_id = 1) {
   if (is.null(feat) || is.null(feat$geometry) || feat$geometry$type != "Polygon") return(NULL)
   coords <- feat$geometry$coordinates[[1]]

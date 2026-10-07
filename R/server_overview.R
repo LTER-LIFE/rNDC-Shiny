@@ -11,18 +11,7 @@ server_overview <- function(input, output, session, state, helpers) {
     }
 
     display_dates <- vapply(seq_len(nrow(ov)), function(i) {
-      row <- ov[i, ]
-      if (!is.na(row$year)) {
-        as.character(row$year)
-      } else if (!is.na(row$date_from) && !is.na(row$date_to)) {
-        if (row$date_from == row$date_to) format(row$date_from, "%Y-%m-%d") else paste0(format(row$date_from, "%Y-%m-%d"), " - ", format(row$date_to, "%Y-%m-%d"))
-      } else if (!is.na(row$date_from)) {
-        format(row$date_from, "%Y-%m-%d")
-      } else if (!is.na(row$date_to)) {
-        format(row$date_to, "%Y-%m-%d")
-      } else {
-        ""
-      }
+      format_date_label(ov$year[i], ov$date_from[i], ov$date_to[i])
     }, FUN.VALUE = character(1), USE.NAMES = FALSE)
 
     tags$table(

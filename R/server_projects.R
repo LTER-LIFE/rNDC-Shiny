@@ -15,6 +15,13 @@ server_projects <- function(input, output, session, state, helpers) {
     session$sendCustomMessage("ndc_select_fixed", if (is.null(val)) NULL else val)
   }, ignoreNULL = FALSE)
 
+  # ---- Helper: remove the project polygons from the map and the state ----
+  clear_fixed_layer <- function() {
+    fixed_polys(NULL)
+    leaflet::clearGroup(leaflet::leafletProxy("map"), "fixed")
+    invisible(NULL)
+  }
+
   # ---- Helper: render a set of "fixed" project polygons on the map ----
   render_fixed_polys <- function(poly, fit = FALSE, show_hint = TRUE) {
     fixed_polys(poly)
@@ -60,26 +67,11 @@ server_projects <- function(input, output, session, state, helpers) {
     snl_last_bbox(NULL)   # reset SNL viewport cache on any project change
     snl_status_msg(NULL)  # clear any stale SNL status line
 
-    # Deselected: clear everything
-    if (is.null(key) || key == "") {
-      clear_map_polygons(except = character(0))
-      leaflet::leafletProxy("map") %>%
-        leaflet::clearGroup("fixed") %>%
-        leaflet::clearGroup("highlight_fixed") %>%
-        leaflet::clearPopups()
-      session$sendCustomMessage("ndc_select_fixed", NULL)
-      return(NULL)
-    }
-
-    # Any project switch starts from a fully clean map: clear previous project
-    # polygons (e.g. LTER sites when switching to SNL, or vice versa), their
-    # highlights, selection and popups.
+    # Deselected, or any project switch: start from a fully clean map. This clears the previous project's
+    # polygons (e.g. LTER sites when switching to SNL, or vice versa), their highlights, popups and the
+    # selection. (The sidebar follows `active_project()`.)
     clear_map_polygons(except = character(0))
-    fixed_polys(NULL)
-    leaflet::leafletProxy("map") %>%
-      leaflet::clearGroup("fixed") %>%
-      leaflet::clearGroup("highlight_fixed") %>%
-      leaflet::clearPopups()
+    if (is.null(key) || key == "") return(NULL)
 
     # ---- SNL: don't load now; parcels stream in by viewport (see observer below) ----
     if (identical(key, "snl")) {
@@ -130,15 +122,13 @@ server_projects <- function(input, output, session, state, helpers) {
 
     # Too far out: clear parcels and show a hint instead of fetching thousands.
     if (zoom < snl_min_zoom) {
-      fixed_polys(NULL)
       snl_last_bbox(NULL)
       snl_status_msg(list(type = "hint", text = "Zoom in to load SNL parcels."))
       # No on-map popup here: re-anchoring a popup to the viewport centre on
       # every pan/zoom made it "travel" and flicker. The status line under the
       # map conveys the same thing and stays put.
-      leaflet::leafletProxy("map") %>%
-        leaflet::clearGroup("fixed") %>%
-        leaflet::removePopup("snl_zoom_hint")
+      clear_fixed_layer()
+      leaflet::removePopup(leaflet::leafletProxy("map"), "snl_zoom_hint")
       return(invisible(NULL))
     }
 
@@ -163,8 +153,7 @@ server_projects <- function(input, output, session, state, helpers) {
     )
 
     if (identical(res$status, "error")) {
-      fixed_polys(NULL)
-      leaflet::leafletProxy("map") %>% leaflet::clearGroup("fixed")
+      clear_fixed_layer()
       snl_status_msg(list(type = "error",
                           text = paste0("Could not load SNL parcels: ",
                                         if (is.null(res$error)) "request failed." else res$error)))
@@ -172,8 +161,7 @@ server_projects <- function(input, output, session, state, helpers) {
     }
 
     if (identical(res$status, "empty")) {
-      fixed_polys(NULL)
-      leaflet::leafletProxy("map") %>% leaflet::clearGroup("fixed")
+      clear_fixed_layer()
       snl_status_msg(list(type = "empty", text = "No SNL parcels in this area. Try panning or zooming."))
       return(invisible(NULL))
     }
@@ -229,7 +217,6 @@ server_projects <- function(input, output, session, state, helpers) {
     msg <- snl_status_msg()
     if (is.null(msg)) return(NULL)
     colour <- switch(msg$type,
-                     loading = "#1f5a8a",
                      ok      = "#2e7d32",
                      capped  = "#b26a00",
                      empty   = "#b26a00",
@@ -239,10 +226,7 @@ server_projects <- function(input, output, session, state, helpers) {
     tags$div(
       style = paste0("margin-top:6px; padding:6px 10px; border-radius:5px; font-size:13px; ",
                      "background:#f5f7fb; border-left:4px solid ", colour, "; color:", colour, ";"),
-      if (identical(msg$type, "loading"))
-        tags$span(tags$span(class = "snl-spinner"), msg$text)
-      else
-        msg$text
+      msg$text
     )
   })
 }

@@ -36,9 +36,12 @@ snl_min_zoom    <- 12L
 # Hard cap on parcels fetched per viewport request (testing safeguard).
 snl_fetch_limit <- 1000L
 
-# Map each LTER project class to the rule that identifies it from `name`.
-# (Used both to classify fetched features and to build the UI menu.)
-lter_class_levels <- c("Light on Nature", "Loobos", "Nestboxes", "Nutnet")
+# The LTER project classes, each with the pattern that identifies it in the `name` of a feature (the first
+# pattern that matches wins; case is ignored). Used to classify the fetched features, to find the NDVI
+# collection of a polygon from its name and to build the project menu.
+lter_class_patterns <- c("Light on Nature" = "^Lantaarnpaal", "Loobos" = "^Loobos$",
+                         "Nestboxes" = "Nestkast", "Nutnet" = "^Nutnet$")
+lter_class_levels <- names(lter_class_patterns)
 
 # The datasets for which the app checks whether the selected area has data, and the STAC collection(s) to ask.
 # (NDVI statistics are left out: items that intersect a project area include its neighbours.)

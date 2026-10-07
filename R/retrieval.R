@@ -348,17 +348,8 @@ write_sf_safe <- function(obj, outfile) {
   ext <- tolower(tools::file_ext(outfile))
 
   if (ext == "csv") {
-    df <- if (inherits(obj, "sf")) {
-      sf::st_drop_geometry(obj)
-    } else if (inherits(obj, "data.frame")) {
-      obj
-    } else if (inherits(obj, "SpatRaster")) {
-      as.data.frame(obj, xy = TRUE, na.rm = FALSE)
-    } else if (inherits(obj, "SpatVector")) {
-      as.data.frame(obj)
-    } else {
-      tryCatch(as.data.frame(obj), error = function(e) NULL)
-    }
+    # tables: the attributes of an sf object, or a data frame
+    df <- if (inherits(obj, "sf")) sf::st_drop_geometry(obj) else if (inherits(obj, "data.frame")) obj else NULL
 
     if (is.null(df) || nrow(df) == 0) return(FALSE)
     utils::write.csv(df, outfile, row.names = FALSE)

@@ -3,13 +3,11 @@
 classify_lter <- function(sf_obj) {
   if (is.null(sf_obj) || nrow(sf_obj) == 0 || !("name" %in% names(sf_obj))) return(sf_obj)
   nm <- sf_obj[["name"]]
-  sf_obj$project_class <- dplyr::case_when(
-    grepl("^Lantaarnpaal", nm, ignore.case = TRUE) ~ "Light on Nature",
-    grepl("^Loobos$",      nm, ignore.case = TRUE) ~ "Loobos",
-    grepl("Nestkast",      nm, ignore.case = TRUE) ~ "Nestboxes",
-    grepl("^Nutnet$",      nm, ignore.case = TRUE) ~ "Nutnet",
-    TRUE ~ NA_character_
-  )
+  sf_obj$project_class <- NA_character_
+  for (cls in lter_class_levels) {
+    todo <- is.na(sf_obj$project_class) & grepl(lter_class_patterns[[cls]], nm, ignore.case = TRUE)
+    sf_obj$project_class[todo] <- cls
+  }
   sf_obj
 }
 
@@ -78,8 +76,7 @@ detect_ndvi_collection <- function(source_name) {
   # SNL parcels were named "SNL parcel_N"
   if (grepl("^SNL parcel(_\\d+)?$", source_name)) return("ndvi-snl")
   # LTER classes were named after the 4 project groups
-  if (grepl(paste0("^(", paste(c("Light on Nature", "Loobos", "Nestboxes", "Nutnet"),
-                                collapse = "|"), ")(_\\d+)?$"), source_name)) return("ndvi-lter")
+  if (grepl(paste0("^(", paste(lter_class_levels, collapse = "|"), ")(_\\d+)?$"), source_name)) return("ndvi-lter")
   NA_character_
 }
 

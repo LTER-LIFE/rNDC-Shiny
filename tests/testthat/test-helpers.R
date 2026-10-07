@@ -129,3 +129,25 @@ test_that("the cache returns values until they expire", {
   local_mocked_bindings(ndc_cache_ttl = -1)
   expect_null(cache_get("k"))
 })
+
+test_that("next_layer_id is one more than the largest id of the layers, whatever is missing", {
+  a <- sf::st_sf(layer_id = c(1L, 4L), geometry = sf::st_sfc(sf::st_point(c(0, 0)), sf::st_point(c(1, 1)), crs = 4326))
+  b <- sf::st_sf(layer_id = 7L, geometry = sf::st_sfc(sf::st_point(c(0, 0)), crs = 4326))
+  expect_equal(next_layer_id(), 1L)
+  expect_equal(next_layer_id(NULL, NULL), 1L)
+  expect_equal(next_layer_id(a, NULL), 5L)
+  expect_equal(next_layer_id(a, b, NULL), 8L)
+  expect_equal(next_layer_id(a[0, ]), 1L)
+})
+
+test_that("the LTER classes come from one list: the first matching pattern wins and the menu follows it", {
+  expect_equal(names(lter_class_patterns), lter_class_levels)
+  x <- sf::st_sf(name = c("Lantaarnpaal 3", "LOOBOS", "Nestkast Veluwe", "Nutnet", "Other", NA),
+                 geometry = sf::st_sfc(rep(list(sf::st_point(c(0, 0))), 6), crs = 4326))
+  expect_equal(classify_lter(x)$project_class,
+               c("Light on Nature", "Loobos", "Nestboxes", "Nutnet", NA, NA))
+
+  html <- as.character(app_ui())
+  for (cls in lter_class_levels) expect_match(html, paste0("lter:", cls), fixed = TRUE)
+  expect_equal(detect_ndvi_collection("Light on Nature_12"), "ndvi-lter")
+})

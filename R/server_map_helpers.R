@@ -62,7 +62,6 @@ create_map_helpers <- function(session, state) {
 
   clear_project_selection_state <- function() {
     session$sendCustomMessage("ndc_select_fixed", NULL)
-    session$sendCustomMessage("ndc_force_clear_fixed_sidebar", NULL)
     active_project(NULL)
     snl_last_bbox(NULL)
     sel <- selected_polygons()
@@ -75,7 +74,7 @@ create_map_helpers <- function(session, state) {
     } else {
       selected_polygons(NULL)
     }
-    update_selected_highlights() # TODO: check this function
+    update_selected_highlights()
     invisible(NULL)
   }
 
