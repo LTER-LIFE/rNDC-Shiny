@@ -24,6 +24,20 @@ test_that("the LTER projects are found and classified", {
   expect_true("ndc_id" %in% names(res$data))
 })
 
+test_that("the LTER projects cover every study site of rNDC", {
+  # The app has no menu of its own for rNDC::ndc_sites(): the LTER projects are the same polygons (with an ndc_id,
+  # so with NDVI statistics). If a site is added to rNDC and not to the lter collection, this fails.
+  skip_unless_live()
+  local_clean_cache()
+  lter <- get_lter_data()$data
+  sites <- lapply(rNDC::ndc_sites(), function(layer) rNDC::ndc_sites(layer))
+  expect_equal(nrow(lter), sum(vapply(sites, nrow, 1L)))
+  for (site in sites) {
+    site <- sf::st_transform(sf::st_geometry(site), sf::st_crs(lter))
+    expect_true(all(lengths(sf::st_intersects(site, lter)) >= 1))
+  }
+})
+
 test_that("SNL parcels can be fetched for a map view", {
   skip_unless_live()
   res <- fetch_snl_bbox(c(5.75, 52.05, 5.76, 52.06))
