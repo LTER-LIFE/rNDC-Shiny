@@ -307,7 +307,18 @@ server_dataset <- function(input, output, session, state, helpers) {
     }
 
     if (length(new_rows) > 0) {
-      overview(dplyr::bind_rows(ov, dplyr::bind_rows(new_rows)))
+      added <- dplyr::bind_rows(new_rows)
+      # the whole overview is retrieved at once, so it is the total that counts
+      seconds <- sum(estimate_row_seconds(ov$dataset, ov$view, ov$date_from, ov$date_to),
+                     estimate_row_seconds(added$dataset, added$view, added$date_from, added$date_to))
+      if (seconds > max_request_seconds()) {
+        showNotification(too_long_retrieval_message(seconds), type = "error", duration = 12)
+        return(NULL)
+      }
+      overview(dplyr::bind_rows(ov, added))
+      if (seconds > warn_request_seconds) {
+        showNotification(long_retrieval_warning(seconds), type = "warning", duration = 10)
+      }
     } else {
       showNotification("Selected dataset(s) already present for the selected polygon(s) with the same settings.", type = "message")
     }

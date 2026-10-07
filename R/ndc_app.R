@@ -7,7 +7,15 @@
 #' The app needs the environment variable `NDC_TOKEN` (NatureDataCube API token). `ADC_TOKEN`
 #' (AgroDataCube API token) is optional: without it the datasets from AgroDataCube (Weather, Soil map,
 #' AHN and Agricultural fields) are disabled. `SHINY_APP_BASE_URL` sets the proxy path when the app runs
-#' behind a reverse proxy (e.g. `/naturedatacube`).
+#' behind a reverse proxy (e.g. `/naturedatacube`). `NDC_MAX_UPLOAD_MB` sets the largest upload (default 100 MB;
+#' Shiny's own default is 5 MB). `NDC_MAX_REQUEST_SECONDS` sets the longest retrieval that
+#' is accepted (default 300 seconds): the overview is estimated when a dataset is added, and a retrieval keeps
+#' the app busy until it is done.
+#'
+#' In a non-interactive session (a deployment, e.g. the Docker image) the retrievals run in background R processes
+#' (`future` workers), so that a long one does not hold the other users up; `NDC_ASYNC` (`true` or `false`)
+#' chooses the mode, and `NDC_WORKERS` sets the number of workers (default: up to 4). In an interactive R
+#' session retrieval happens in the session itself, unless `NDC_ASYNC=true`.
 #'
 #' @returns A `shiny.appobj`.
 #' @seealso [ndc_gui()]
@@ -15,6 +23,7 @@
 
 ndc_app <- function() {
   ndc_setup()
+  setup_async()
   shiny::addResourcePath("ndc-www", system.file("app", "www", package = "rNDC.Shiny"))
   shiny::shinyApp(app_ui(), app_server)
 }
@@ -31,5 +40,15 @@ ndc_setup <- function() {
   }
   app_base_url <- Sys.getenv("SHINY_APP_BASE_URL")
   if (nzchar(app_base_url)) options(shiny.appBaseUrl = app_base_url)
+  # uploads: Shiny's default of 5 MB is too small for many shapefiles and GeoPackages. A limit that was set
+  # already (the option) is kept, unless NDC_MAX_UPLOAD_MB says otherwise.
+  upload_mb <- suppressWarnings(as.numeric(Sys.getenv("NDC_MAX_UPLOAD_MB")))
+  if (!is.na(upload_mb) && upload_mb > 0) {
+    options(shiny.maxRequestSize = upload_mb * 1024^2)
+  } else if (is.null(getOption("shiny.maxRequestSize"))) {
+    options(shiny.maxRequestSize = default_upload_mb * 1024^2)
+  }
+  max_seconds <- suppressWarnings(as.numeric(Sys.getenv("NDC_MAX_REQUEST_SECONDS")))
+  if (!is.na(max_seconds) && max_seconds > 0) options(rNDC.Shiny.max_request_seconds = max_seconds)
   invisible(TRUE)
 }

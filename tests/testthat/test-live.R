@@ -52,7 +52,7 @@ test_that("AgroDataCube results are fetched completely", {
   skip_unless_live()
   # About 700 fields in this area: more than the default page of the API
   poly <- "POLYGON((5.70 52.00,5.85 52.00,5.85 52.10,5.70 52.10,5.70 52.00))"
-  res <- adc_get_all("Fields", c(geometry = poly, epsg = "4326", year = "2024", output_epsg = "4326"),
+  res <- rNDC::adc_get_all("Fields", c(geometry = poly, epsg = "4326", year = "2024", output_epsg = "4326"),
                      token = Sys.getenv("ADC_TOKEN"))
   expect_gt(length(res$features), 100)
 })
@@ -61,7 +61,7 @@ test_that("there is data at the earliest dates and years that the app offers", {
   skip_unless_live()
   # NDVI: GroenMonitor starts on 2017-05-26 (ndvi_min_month); it is not downloaded here, as that takes a minute.
   poly <- "POLYGON((5.70 52.00,5.72 52.00,5.72 52.02,5.70 52.02,5.70 52.00))"
-  fields <- adc_get_all("Fields", c(geometry = poly, epsg = "4326", year = as.character(fields_min_year),
+  fields <- rNDC::adc_get_all("Fields", c(geometry = poly, epsg = "4326", year = as.character(fields_min_year),
                                     output_epsg = "4326"), token = Sys.getenv("ADC_TOKEN"))
   expect_gt(length(fields$features), 0)
 

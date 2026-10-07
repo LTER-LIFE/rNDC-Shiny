@@ -407,7 +407,8 @@ app_ui <- function() {
         tags$details(class = "ndc-category disabled-category",
                      tags$summary("Upload your own polygon(s)"),
                      tags$div(style = "margin-top:8px;",
-                              helpText("Supported file formats: .gpkg, .shp. For shapefiles, upload all layers: .shp, .shx, .dbf, and preferably .prj."),
+                              helpText(paste0("Supported file formats: .gpkg, .shp. For shapefiles, upload all layers: .shp, .shx, .dbf, and preferably .prj. ",
+                                              "The files together can be up to ", format(round(max_upload_mb()), trim = TRUE), " MB.")),
                               fileInput("upload", "Upload polygons", multiple = TRUE, accept = c(".gpkg", ".shp", ".shx", ".dbf", ".prj", ".zip", ".geojson", ".json", ".kml")),
                               uiOutput("upload_panel"),
                               tags$div(style = "margin-top:6px;"))

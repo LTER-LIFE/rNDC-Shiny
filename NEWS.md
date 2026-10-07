@@ -7,9 +7,15 @@
 * The "Return data to R (close app)" button works again (it is shown in interactive R sessions).
 * The messages panel shows what happened to each dataset (retrieved, or failed and why), also when only part of the selection could be retrieved.
 * The app shows whether the selected area has Land Use or Nitrogen data (for the selected year) before you add the dataset.
+* In a deployment (e.g. the Docker image) retrievals run in background R processes (`future` workers), so that a long retrieval does not hold up the other users; the progress bar follows it from the background. `NDC_ASYNC` and `NDC_WORKERS` set this; in an interactive R session retrieval stays in the session. A session retrieves one overview at a time.
+* Uploads can be up to 100 MB (`NDC_MAX_UPLOAD_MB`), instead of Shiny's 5 MB, and the page says so.
+* Long retrievals are estimated when a dataset is added: the app warns above about a minute and refuses above 5 minutes (`NDC_MAX_REQUEST_SECONDS` changes the limit, which is 15 minutes in the background mode), counting the whole overview. While retrieving, the progress bar and its detail show where the retrieval is (e.g. the 3rd of 10 Weather requests).
 * The Land Use year can be chosen (the years come from the NatureDataCube; only 2024 is available for now).
 * The Docker image installs the package, with `rNDC` from a configurable branch (`RNDC_REF`).
 * Offline tests (HTTP stubbed with webmockr), live tests, and the `R-CMD-check`, `live-checks` and `docker-build` GitHub Actions.
+
+* Requires rNDC 0.5 or later: the helpers that this package had written for itself (all pages of a STAC search, all pages of an AgroDataCube request, the monthly NDVI statistics, the years of the rasters, and the defaults of the rasters, which were taken from rNDC's internals) are now exported by rNDC.
+* The Docker build checks each step (a missing package fails the build), can use a GitHub token against rate limits (`docker build --secret id=github_pat,env=GITHUB_PAT .`), and the `docker-build` workflow also starts the container and checks that it answers. `aidecl.yaml` declares the use of AI tools.
 
 ## Fixes
 

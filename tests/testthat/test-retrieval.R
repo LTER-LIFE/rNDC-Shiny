@@ -252,3 +252,42 @@ test_that("the export folder is returned only when it still exists", {
     expect_true(file.exists(file.path(kept$out_dir, "download_summary.csv")))
   })
 })
+
+test_that("the progress follows the messages of a long retrieval", {
+  rec <- new.env()
+  rec$calls <- list()
+  local_mocked_bindings(
+    report_progress = function(detail = NULL, value = NULL) {
+      rec$calls[[length(rec$calls) + 1]] <- list(detail = detail, value = value)
+    }
+  )
+  meteo <- sf::st_sf(day = 1, geometry = sf::st_sfc(sf::st_point(c(5, 52)), crs = 4326))
+  local_mocked_bindings(
+    get_closest_meteostation = function(...) list(closest_id = "260"),
+    get_meteo_for_long_period = function(...) {
+      for (i in 1:4) message("Downloading chunk ", i, " (", i, "/4)")
+      meteo
+    },
+    .package = "rNDC"
+  )
+  rows <- list(overview_row("Land Use", year = 2024L),
+               overview_row("Weather", "Statistics", from = date_from <- as.Date("2024-01-01"), to = as.Date("2024-06-30")))
+  local_mocked_bindings(get_landuse_raster = function(...) list(stack = terra::rast(nrows = 2, ncols = 2, vals = 1:4)),
+                        .package = "rNDC")
+
+  with_overview(rows, {
+    suppressMessages(res <- retrieve_and_save(save_files = FALSE))
+    expect_true(res$produced_any)
+  })
+
+  values <- vapply(rec$calls, function(x) if (is.null(x$value)) NA_real_ else x$value, numeric(1))
+  details <- vapply(rec$calls, function(x) if (is.null(x$detail)) NA_character_ else x$detail, character(1))
+  # each row starts at its place of the bar, and ends where the next one starts
+  expect_equal(values[details == "Land Use (Own polygon)" & !is.na(details)][1], 0)
+  expect_equal(values[details == "Weather (Own polygon)" & !is.na(details)][1], 0.5)
+  # the 3rd of 4 requests of the 2nd of 2 rows
+  expect_true(any(abs(values - (1 + 2 / 4) / 2) < 1e-9, na.rm = TRUE))
+  expect_true(any(grepl("^Weather \\(Own polygon\\): Downloading chunk 3 \\(3/4\\)$", details)))
+  expect_equal(values[length(values)], 1)
+  expect_false(is.unsorted(values[!is.na(values)]))  # the bar never goes back
+})

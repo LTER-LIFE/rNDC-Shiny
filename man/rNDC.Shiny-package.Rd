@@ -18,7 +18,7 @@ Useful links:
 
 }
 \author{
-\strong{Maintainer}: Bruno Marcos \email{brunoasmarcos@gmail.com}
+\strong{Maintainer}: Bruno Marcos \email{b.a.santosmarcos@uva.nl}
 
 Authors:
 \itemize{

@@ -149,3 +149,24 @@ local_clean_cache <- function(env = parent.frame()) {
   clear()
   withr::defer(clear(), envir = env)
 }
+
+# ---- background retrieval (R/async.R) ----
+
+# Run later's event loop, which resolves promises, until `condition()` holds
+wait_for <- function(condition, timeout = 60) {
+  start <- Sys.time()
+  while (!isTRUE(condition())) {
+    later::run_now(0.05)
+    if (as.numeric(difftime(Sys.time(), start, units = "secs")) > timeout) stop("timed out waiting")
+  }
+  invisible(TRUE)
+}
+
+# Retrieve in background processes for the rest of the test. They are forked, so that they have the package
+# as it is loaded for the tests (and the HTTP stubs and mocks of the test).
+local_async <- function(workers = 2, env = parent.frame()) {
+  testthat::skip_if_not(future::supportsMulticore(), "forked processes are not supported here")
+  old <- future::plan(future::multicore, workers = workers)
+  withr::defer(future::plan(old), envir = env)
+  withr::local_options(rNDC.Shiny.async = TRUE, .local_envir = env)
+}

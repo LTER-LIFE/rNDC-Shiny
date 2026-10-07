@@ -19,7 +19,7 @@ classify_lter <- function(sf_obj) {
 fetch_lter_classified <- function() {
   err <- NULL
   out <- tryCatch(
-    ndc_get_all_sf(collection = ndc_lter_collection),
+    rNDC::ndc_get(collection = ndc_lter_collection, mode = "sf", limit = 1000, all_pages = TRUE),
     error = function(e) { err <<- conditionMessage(e); NULL }
   )
   if (is.null(out) || nrow(out) == 0) return(list(data = NULL, error = err))
@@ -45,29 +45,12 @@ fetch_snl_bbox <- function(bbox) {
   if (is.null(bbox) || length(bbox) != 4 || any(!is.finite(bbox))) {
     return(list(status = "error", data = NULL, error = "Invalid bounding box."))
   }
-  # Build a proper sf polygon (with an explicit CRS) for the viewport rectangle
-  # and pass THAT as the RoI. ndc_roi() handles sf objects cleanly; passing a
-  # bare numeric vector goes through st_bbox.numeric() which (a) needs names and
-  # (b) yields a bbox with NA crs that then errors on the internal st_transform.
-  roi_poly <- tryCatch(
-    sf::st_as_sf(
-      sf::st_as_sfc(
-        sf::st_bbox(c(xmin = unname(bbox[1]), ymin = unname(bbox[2]),
-                      xmax = unname(bbox[3]), ymax = unname(bbox[4])),
-                    crs = sf::st_crs(4326))
-      )
-    ),
-    error = function(e) NULL
-  )
-  if (is.null(roi_poly)) {
-    return(list(status = "error", data = NULL, error = "Could not build viewport polygon."))
-  }
+  # Only the first `snl_fetch_limit` parcels of the view are wanted (the page says when there are more), so
+  # not all pages: rNDC warns that the first page is incomplete, which is expected here.
   out <- tryCatch(
-    rNDC::ndc_get(
-      collection = ndc_snl_collection,
-      roi        = roi_poly,
-      mode       = "sf",
-      limit      = snl_fetch_limit
+    withCallingHandlers(
+      rNDC::ndc_get(collection = ndc_snl_collection, roi = unname(bbox), mode = "sf", limit = snl_fetch_limit),
+      warning = function(w) if (grepl("matched items were returned", conditionMessage(w))) invokeRestart("muffleWarning")
     ),
     error = function(e) structure("ndc_error", message = conditionMessage(e))
   )
@@ -123,72 +106,18 @@ fetch_ndvi_stats_monthly <- function(roi_sf, collection, date_from, date_to) {
     return(list(status = "error", data = NULL, error = "Could not prepare region of interest."))
   }
 
-  # Build a temporal range string for the STAC query (if dates are available).
-  trange <- NULL
-  if (!is.null(date_from) && !is.na(date_from) && !is.null(date_to) && !is.na(date_to)) {
-    trange <- tryCatch(
-      # date_to is a whole day: ndc_trange() turns a date into 00:00:00Z, which
-      # would drop that day's observations, so extend the end to 23:59:59.
-      rNDC::ndc_trange(c(lubridate::as_datetime(date_from),
-                         lubridate::as_datetime(date_to) + 86399)),
-      error = function(e) NULL
-    )
+  stats <- tryCatch(
+    rNDC::get_ndvi_stats(roi_sf, collection,
+                         from = if (is.null(date_from)) NA else date_from,
+                         to = if (is.null(date_to)) NA else date_to),
+    error = function(e) structure("ndc_error", message = conditionMessage(e))
+  )
+  if (is.character(stats) && identical(as.character(stats), "ndc_error")) {
+    return(list(status = "error", data = NULL, error = attr(stats, "message")))
   }
+  if (nrow(stats) == 0) return(list(status = "empty", data = NULL, error = NULL))
 
-  out <- tryCatch({
-    ndc_get_all_sf(collection = collection, roi = roi_sf, trange = trange)
-  }, error = function(e) structure("ndc_error", message = conditionMessage(e)))
-
-  if (is.character(out) && identical(as.character(out), "ndc_error")) {
-    return(list(status = "error", data = NULL, error = attr(out, "message")))
-  }
-  if (is.null(out) || nrow(out) == 0) {
-    return(list(status = "empty", data = NULL, error = NULL))
-  }
-
-  # The query returns every NDVI feature that INTERSECTS the polygon, which for
-  # SNL parcels includes the neighbouring parcels. Project polygons carry the
-  # `ndc_id` that also identifies their NDVI features: keep only those.
-  roi_ids <- if ("ndc_id" %in% names(roi_sf)) unique(as.character(roi_sf$ndc_id)) else character(0)
-  roi_ids <- roi_ids[!is.na(roi_ids)]
-  if (length(roi_ids) > 0 && "ndc_id" %in% names(out)) {
-    out <- out[as.character(out$ndc_id) %in% roi_ids, , drop = FALSE]
-    if (nrow(out) == 0) return(list(status = "empty", data = NULL, error = NULL))
-  }
-
-  # Drop geometry: statistics output is a plain table.
-  df <- tryCatch(sf::st_drop_geometry(out), error = function(e) as.data.frame(out))
-
-  if (!("observation_date" %in% names(df))) {
-    return(list(status = "error", data = NULL,
-                error = "Expected field 'observation_date' not found in NDVI collection."))
-  }
-  if (!("ndvi_mean" %in% names(df))) {
-    return(list(status = "error", data = NULL,
-                error = "Expected field 'ndvi_mean' not found in NDVI collection."))
-  }
-
-  df$month <- substr(as.character(df$observation_date), 1, 7)  # "YYYY-MM"
-  # Aggregate per sub-polygon (ndc_id) and month if ndc_id is present, so values
-  # are correct even if the area maps to multiple ndc_id features; the ndc_id
-  # column itself is dropped from the final output below.
-  group_cols <- intersect(c("ndc_id", "month"), names(df))
-  if (!("month" %in% group_cols)) group_cols <- "month"
-
-  has_std <- "ndvi_std" %in% names(df)
-
-  agg <- df |>
-    dplyr::group_by(dplyr::across(dplyr::all_of(group_cols))) |>
-    dplyr::summarise(
-      ndvi_mean = mean(suppressWarnings(as.numeric(ndvi_mean)), na.rm = TRUE),
-      ndvi_std  = if (has_std) mean(suppressWarnings(as.numeric(ndvi_std)), na.rm = TRUE) else NA_real_,
-      .groups = "drop"
-    ) |>
-    dplyr::arrange(month)
-
-  agg <- as.data.frame(agg)
-  if (!has_std) agg$ndvi_std <- NULL          # don't show a column the source didn't provide
-  if ("ndc_id" %in% names(agg)) agg$ndc_id <- NULL  # requested: leave out ndc_id
-
-  list(status = "ok", data = agg, error = NULL)
+  # One polygon: leave out its id, and the standard deviation if the collection does not have it
+  data <- as.data.frame(stats[, intersect(c("month", "ndvi_mean", "ndvi_std"), names(stats))])
+  list(status = "ok", data = data, error = NULL)
 }

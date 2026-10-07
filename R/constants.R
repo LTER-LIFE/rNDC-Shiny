@@ -40,14 +40,30 @@ snl_fetch_limit <- 1000L
 # (Used both to classify fetched features and to build the UI menu.)
 lter_class_levels <- c("Light on Nature", "Loobos", "Nestboxes", "Nutnet")
 
-# STAC collection of the Land Use rasters
-ndc_landuse_collection <- "lgn"
-
 # The datasets for which the app checks whether the selected area has data, and the STAC collection(s) to ask.
 # (NDVI statistics are left out: items that intersect a project area include its neighbours.)
 availability_collections <- function() {
   list("Land Use" = ndc_landuse_collection, "Nitrogen" = nitrogen_layer_choices)
 }
+
+# Largest upload (MB). Shiny's own limit is 5 MB, which is too small for many shapefiles and GeoPackages.
+# Set another with the environment variable NDC_MAX_UPLOAD_MB, or the option `shiny.maxRequestSize` (in bytes).
+default_upload_mb <- 100
+max_upload_mb <- function() getOption("shiny.maxRequestSize", 5 * 1024^2) / 1024^2
+
+# Weather is requested in chunks of this many days, with a pause (in seconds) between the requests
+weather_chunk_days <- 200L
+weather_chunk_sleep <- 0.5
+
+# How long the requests take, measured on a normal connection: seconds per Weather request (one chunk, with
+# the pause) and per daily NDVI download. They are used to warn before the overview takes long: a retrieval
+# keeps the app busy until it is done. A retrieval above `warn_request_seconds` is warned about, and one
+# above `max_request_seconds()` is refused (option `rNDC.Shiny.max_request_seconds`, or the environment
+# variable NDC_MAX_REQUEST_SECONDS; the default is 300 seconds, or 900 when retrievals run in the background,
+# where they hold nobody up).
+request_seconds <- c(weather_chunk = 0.9, ndvi_day = 0.25)
+warn_request_seconds <- 60
+max_request_seconds <- function() getOption("rNDC.Shiny.max_request_seconds", if (async_enabled()) 900 else 300)
 
 # Earliest data of the sources, checked against the live services (see test-live.R). They bound what
 # the date and year inputs offer.
@@ -55,10 +71,11 @@ weather_min_date <- as.Date("1970-01-01")  # KNMI daily data; the closest statio
 ndvi_min_month <- as.Date("2017-05-01")    # the GroenMonitor daily NDVI starts on 2017-05-26
 fields_min_year <- 2009L                   # AgroDataCube field geometries (2008 has none)
 
-# Defaults taken from rNDC. These are internal (unexported) constants of that
-# package, hence `:::`; ideally rNDC would export them. Evaluated lazily on first use.
-delayedAssign("landuse_default_year", rNDC:::landuse_default_year)
-delayedAssign("nitrogen_layer_choices", rNDC:::nitrogen_layer_choices)
+# Defaults of the rasters, taken from rNDC (>= 0.5) and evaluated on first use: the STAC collection of the
+# Land Use rasters, its default year, and the nitrogen layers.
+delayedAssign("ndc_landuse_collection", rNDC::ndc_landuse_collection())
+delayedAssign("landuse_default_year", rNDC::ndc_landuse_default_year())
+delayedAssign("nitrogen_layer_choices", rNDC::ndc_nitrogen_layers())
 
 # Datasets that come from AgroDataCube and therefore need an ADC token.
 adc_datasets <- c("Weather", "Soil map", "AHN", "Agricultural fields")

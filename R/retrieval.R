@@ -35,8 +35,8 @@ adc_sf_outcome <- function(row, response) {
 }
 
 retrieve_agricultural_fields <- function(row, adc_token) {
-  response <- adc_get_all("Fields", c(geometry = row$wkt, epsg = "4326", year = row$year, output_epsg = "4326"),
-                          token = adc_token)
+  response <- rNDC::adc_get_all("Fields", c(geometry = row$wkt, epsg = "4326", year = row$year, output_epsg = "4326"),
+                                token = adc_token)
   adc_sf_outcome(row, response)
 }
 
@@ -46,8 +46,8 @@ retrieve_ahn <- function(row, adc_token) {
 }
 
 retrieve_soil_map <- function(row, adc_token) {
-  response <- adc_get_all("Soiltypes", c(geometry = row$wkt, epsg = "4326", output_epsg = "4326"),
-                          token = adc_token)
+  response <- rNDC::adc_get_all("Soiltypes", c(geometry = row$wkt, epsg = "4326", output_epsg = "4326"),
+                                token = adc_token)
   adc_sf_outcome(row, response)
 }
 
@@ -66,7 +66,7 @@ retrieve_weather <- function(row, adc_token) {
     rNDC::get_meteo_for_date(closest_id, row$date_from, adc_token)
   } else {
     rNDC::get_meteo_for_long_period(meteostation = closest_id, fromdate = row$date_from,
-                                    todate = row$date_to, token = adc_token, by_days = 200, sleep_sec = 0.5)
+                                    todate = row$date_to, token = adc_token, by_days = weather_chunk_days, sleep_sec = weather_chunk_sleep)
   }
   if (is.null(meteo) || nrow(meteo) == 0) return(failed("no data returned"))
 

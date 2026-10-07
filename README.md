@@ -17,7 +17,7 @@ The idea of the *NatureDataCube* is to offer an accessible way for researchers/e
 remotes::install_github("LTER-LIFE/rNDC-Shiny")
 ```
 
-This also installs [`rNDC`](https://github.com/LTER-LIFE/rNDC) (from its `texel26` branch, see `Remotes` in [DESCRIPTION](DESCRIPTION)) and the other dependencies. The package needs R >= 4.1.
+This also installs [`rNDC`](https://github.com/LTER-LIFE/rNDC) and the other dependencies. The package needs R >= 4.1.
 
 ## Authentication
 
@@ -67,6 +67,22 @@ See [`examples/tutorial.R`](examples/tutorial.R) for a tutorial that combines bi
 
 For Land Use and Nitrogen, the app tells you whether the selected area has data for the chosen year before you add the dataset.
 
+### Long retrievals
+
+The NDVI rasters and long Weather periods make many requests (one download per day for NDVI rasters, one request per 200 days for Weather). When you add a dataset, the app estimates how long the whole overview will take to retrieve (NDVI rasters: about a quarter of a second per day, so a year takes about a minute and a half). Above about a minute it warns you, and above a limit it refuses and asks for a shorter period. While retrieving, the progress bar shows where it is.
+
+**Where the retrieval runs.** In an interactive R session (`ndc_gui()` from R), the app retrieves in your R session, and is busy until it is done; the limit is 5 minutes. In a deployment (a non-interactive session, such as the Docker image) the retrieval runs in a background R process (`future` workers), so that a long retrieval does not hold up the other users; the limit is then 15 minutes. Settings:
+
+| Variable | Meaning |
+|---|---|
+| `NDC_ASYNC` | `true` or `false`: retrieve in background processes or not (default: yes when not interactive). |
+| `NDC_WORKERS` | The number of background processes, i.e. retrievals that run at the same time; more wait in a queue (default: up to 4, depending on the cores). Each uses memory (a few hundred MB). |
+| `NDC_MAX_REQUEST_SECONDS` | The longest retrieval that is accepted (the option `rNDC.Shiny.max_request_seconds` does the same). |
+
+A session retrieves one overview at a time. In the background mode, the package must be installed (the processes load it), or R must be able to fork; with `devtools::load_all()` the app uses forked processes.
+
+Uploads can be up to 100 MB in total (set `NDC_MAX_UPLOAD_MB` to change this; Shiny's own default is 5 MB).
+
 Areas of interest can be one of the project areas (LTER projects, or SNL parcels), polygons you draw on the map, or polygons you upload (GeoPackage, shapefile, GeoJSON, KML, or a zip file with these).
 
 ## Running with Docker or Podman
@@ -83,7 +99,7 @@ ADC_TOKEN=your_agrodatacube_token_here
 SHINY_APP_BASE_URL=/naturedatacube
 ```
 
-`NDC_TOKEN` is required. `ADC_TOKEN` is optional: without it, the datasets from AgroDataCube (Weather, Soil map, AHN and Agricultural fields) are disabled. `SHINY_APP_BASE_URL` is only needed when a reverse proxy publishes the app under a path.
+`NDC_TOKEN` is required. `ADC_TOKEN` is optional: without it, the datasets from AgroDataCube (Weather, Soil map, AHN and Agricultural fields) are disabled. `SHINY_APP_BASE_URL` is only needed when a reverse proxy publishes the app under a path. The optional `NDC_ASYNC`, `NDC_WORKERS`, `NDC_MAX_REQUEST_SECONDS` and `NDC_MAX_UPLOAD_MB` are described in the sections above; in the container the retrievals run in background processes by default (`NDC_ASYNC=true`), up to 4 at the same time.
 
 **Run:**
 
@@ -98,6 +114,8 @@ podman compose up --build
 The app will be available at `http://localhost:3838/`.
 
 By default the image installs `rNDC` from its `texel26` branch. To use another branch or tag, set `RNDC_REF` (e.g. `RNDC_REF=main docker compose up --build`).
+
+The build downloads `rNDC` and `leaflet.extras` from GitHub, which limits anonymous requests; if the build fails because of that, pass a GitHub token as a build secret (it is not kept in the image): `GITHUB_PAT=<token> docker build --secret id=github_pat,env=GITHUB_PAT -t rndc-shiny .`.
 
 ## Development
 

@@ -1,14 +1,15 @@
-# Builds the Docker image (without publishing it), to detect broken installs early:
-# a changed `Remotes:` entry, a missing system library, a renamed launcher function, ...
+# Builds the Docker image (without publishing it) and runs it, to detect broken installs early: a changed
+# `Remotes:` entry, a missing system library, a renamed launcher function, a background worker that cannot
+# load the package, ...
 name: docker-build
 
 on:
   push:
-    branches: [main]
-    paths: [Dockerfile, .dockerignore, compose.yaml, DESCRIPTION, "R/**", "inst/**", NAMESPACE]
+    branches: [main, texel26]
+    paths: [Dockerfile, .dockerignore, compose.yaml, DESCRIPTION, "R/**", "inst/**", NAMESPACE, "tests/testthat/scripts/**"]
   pull_request:
     branches: [main]
-    paths: [Dockerfile, .dockerignore, compose.yaml, DESCRIPTION, "R/**", "inst/**", NAMESPACE]
+    paths: [Dockerfile, .dockerignore, compose.yaml, DESCRIPTION, "R/**", "inst/**", NAMESPACE, "tests/testthat/scripts/**"]
   workflow_dispatch:
 
 permissions: read-all
@@ -16,7 +17,7 @@ permissions: read-all
 jobs:
   docker-build:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
 
@@ -29,8 +30,31 @@ jobs:
           push: false
           load: true
           tags: rndc-shiny:ci
+          # a token against the rate limit of the GitHub API (it is not kept in the image)
+          secrets: |
+            github_pat=${{ secrets.GITHUB_TOKEN }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
       - name: The package loads in the image
         run: docker run --rm rndc-shiny:ci R -q -e 'library(rNDC.Shiny); stopifnot(is.function(ndc_gui)); packageVersion("rNDC")'
+
+      - name: A job runs in a fresh background process of the image
+        run: |
+          docker run --rm -v "$PWD/tests/testthat/scripts:/scripts:ro" rndc-shiny:ci \
+            Rscript /scripts/job-in-fresh-process.R | tee job.log
+          grep -q "JOB OK" job.log
+
+      - name: The app starts and answers
+        run: |
+          docker run -d --name ndc -p 3838:3838 -e NDC_TOKEN=dummy rndc-shiny:ci
+          code=000
+          for i in $(seq 1 60); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3838/ || true)
+            [ "$code" = "200" ] && break
+            sleep 2
+          done
+          docker logs ndc
+          test "$code" = "200"
+          # the logo, served from the package
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:3838/ndc-www/LTER-LIFE-logo.png)" = "200"

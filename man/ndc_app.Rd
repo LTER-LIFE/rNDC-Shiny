@@ -18,7 +18,15 @@ to run it from R; \code{ndc_app()} itself is meant for deployments that need an 
 The app needs the environment variable \code{NDC_TOKEN} (NatureDataCube API token). \code{ADC_TOKEN}
 (AgroDataCube API token) is optional: without it the datasets from AgroDataCube (Weather, Soil map,
 AHN and Agricultural fields) are disabled. \code{SHINY_APP_BASE_URL} sets the proxy path when the app runs
-behind a reverse proxy (e.g. \verb{/naturedatacube}).
+behind a reverse proxy (e.g. \verb{/naturedatacube}). \code{NDC_MAX_UPLOAD_MB} sets the largest upload (default 100 MB;
+Shiny's own default is 5 MB). \code{NDC_MAX_REQUEST_SECONDS} sets the longest retrieval that
+is accepted (default 300 seconds): the overview is estimated when a dataset is added, and a retrieval keeps
+the app busy until it is done.
+
+In a non-interactive session (a deployment, e.g. the Docker image) the retrievals run in background R processes
+(\code{future} workers), so that a long one does not hold the other users up; \code{NDC_ASYNC} (\code{true} or \code{false})
+chooses the mode, and \code{NDC_WORKERS} sets the number of workers (default: up to 4). In an interactive R
+session retrieval happens in the session itself, unless \code{NDC_ASYNC=true}.
 }
 \seealso{
 \code{\link[=ndc_gui]{ndc_gui()}}

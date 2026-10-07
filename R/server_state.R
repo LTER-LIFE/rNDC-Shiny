@@ -35,6 +35,8 @@ create_state <- function(ndc_token, adc_token) {
     # a zip that the download pre-check built and verified to contain data, so that the download handler
     # can serve it without retrieving again
     prepared_zip = reactiveVal(NULL),
+    # is a retrieval of this session running in the background?
+    retrieving = reactiveVal(FALSE),
 
     # credentials
     mytoken = ndc_token,

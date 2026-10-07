@@ -175,3 +175,152 @@ test_that("NDVI months before the first observations are clipped or rejected", {
     expect_equal(overview()$date_to, as.Date("2017-12-31"))
   })
 })
+
+# ---- long retrievals: warn, or refuse, when a dataset is added ----
+
+ndvi_rasters <- function(session, from_year, from_month, to_year, to_month, view = "Geodata") {
+  session$setInputs(selected_dataset = "NDVI", ndvi_tab = view, ndvi_mode = "range",
+                    ndvi_from_year = from_year, ndvi_from_month = from_month,
+                    ndvi_to_year = to_year, ndvi_to_month = to_month)
+}
+
+test_that("an NDVI raster period that would take too long is refused", {
+  rec <- new.env()
+  local_mocked_bindings(too_long_retrieval_message = function(seconds) { rec$refused <- seconds; "too long" })
+  sel <- selected_polygon()
+
+  with_server({
+    ndvi_rasters(session, 2017, 5, 2024, 12)  # about 2,800 daily downloads
+    selected_polygons(sel)
+    session$flushReact()
+    session$setInputs(add_dataset = 1)
+    expect_equal(nrow(overview()), 0)
+    expect_gt(rec$refused, max_request_seconds())
+  })
+})
+
+test_that("a long but allowed retrieval is added, with a warning", {
+  rec <- new.env()
+  local_mocked_bindings(long_retrieval_warning = function(seconds) { rec$warned <- seconds; "long" },
+                        too_long_retrieval_message = function(seconds) { rec$refused <- seconds; "too long" })
+  sel <- selected_polygon()
+
+  with_server({
+    ndvi_rasters(session, 2018, 1, 2019, 12)  # 730 days
+    selected_polygons(sel)
+    session$flushReact()
+    session$setInputs(add_dataset = 1)
+    expect_equal(nrow(overview()), 1)
+    expect_equal(rec$warned, 730 * request_seconds[["ndvi_day"]])
+    expect_null(rec$refused)
+  })
+})
+
+test_that("the whole overview counts, not only the dataset being added", {
+  rec <- new.env()
+  local_mocked_bindings(too_long_retrieval_message = function(seconds) { rec$refused <- seconds; "too long" })
+  sel <- selected_polygon()
+
+  with_server({
+    ndvi_rasters(session, 2018, 1, 2019, 12)  # 182 seconds
+    selected_polygons(sel)
+    session$flushReact()
+    session$setInputs(add_dataset = 1)
+    expect_equal(nrow(overview()), 1)
+
+    ndvi_rasters(session, 2020, 1, 2021, 6)  # 137 seconds: allowed alone, not on top of the first
+    session$setInputs(add_dataset = 2)
+    expect_equal(nrow(overview()), 1)
+    expect_equal(rec$refused, (730 + 547) * request_seconds[["ndvi_day"]])
+
+    # quick datasets still fit
+    session$setInputs(selected_dataset = "Land Use", landuse_year = "2024")
+    session$setInputs(add_dataset = 3)
+    expect_equal(nrow(overview()), 2)
+  })
+})
+
+test_that("each selected polygon is retrieved separately, so it counts too", {
+  rec <- new.env()
+  local_mocked_bindings(too_long_retrieval_message = function(seconds) { rec$refused <- seconds; "too long" })
+  both <- rbind(selected_polygon("A"), selected_polygon("B"))
+  both$wkt <- c(wkt_square, sub("5\\.75", "6.75", wkt_square))  # different polygons
+
+  with_server({
+    ndvi_rasters(session, 2018, 1, 2019, 12)  # 182 seconds for one polygon, 365 for two
+    selected_polygons(both)
+    session$flushReact()
+    session$setInputs(add_dataset = 1)
+    expect_equal(nrow(overview()), 0)
+    expect_equal(rec$refused, 2 * 730 * request_seconds[["ndvi_day"]])
+  })
+})
+
+test_that("the limit can be raised, and does not apply to what is quick", {
+  withr::local_options(rNDC.Shiny.max_request_seconds = 1000)
+  sel <- selected_polygon()
+
+  with_server({
+    ndvi_rasters(session, 2017, 5, 2024, 12)
+    selected_polygons(sel)
+    session$flushReact()
+    session$setInputs(add_dataset = 1)
+    expect_equal(nrow(overview()), 1)  # about 700 seconds, below the raised limit
+  })
+
+  withr::local_options(rNDC.Shiny.max_request_seconds = 300)
+  with_server({
+    ndvi_rasters(session, 2017, 5, 2024, 12, view = "Statistics")  # one STAC request: no limit
+    selected_polygons(sel)
+    session$flushReact()
+    session$setInputs(add_dataset = 1)
+    expect_equal(nrow(overview()), 1)
+  })
+})
+
+test_that("the longest Weather period is allowed, with a warning", {
+  rec <- new.env()
+  local_mocked_bindings(long_retrieval_warning = function(seconds) { rec$warned <- seconds; "long" })
+  sel <- selected_polygon()
+
+  with_server({
+    session$setInputs(selected_dataset = "Weather", weather_mode = "period",
+                      weather_period = c(weather_min_date, Sys.Date()))
+    selected_polygons(sel)
+    session$flushReact()
+    session$setInputs(add_dataset = 1)
+    expect_equal(nrow(overview()), 1)
+    expect_gt(rec$warned, warn_request_seconds)
+  })
+})
+
+# ---- upload size ----
+
+test_that("the upload limit is raised from Shiny's 5 MB, can be set, and a limit that was set is kept", {
+  withr::local_envvar(NDC_TOKEN = "t", ADC_TOKEN = "t", SHINY_APP_BASE_URL = NA, NDC_MAX_UPLOAD_MB = NA)
+
+  withr::local_options(shiny.maxRequestSize = NULL)
+  ndc_setup()
+  expect_equal(getOption("shiny.maxRequestSize"), default_upload_mb * 1024^2)
+  expect_equal(max_upload_mb(), 100)
+
+  withr::local_options(shiny.maxRequestSize = 20 * 1024^2)  # set by the user
+  ndc_setup()
+  expect_equal(max_upload_mb(), 20)
+
+  withr::local_envvar(NDC_MAX_UPLOAD_MB = "250")  # the variable wins
+  ndc_setup()
+  expect_equal(max_upload_mb(), 250)
+
+  for (bad in c("abc", "-1", "0", "")) {
+    withr::local_options(shiny.maxRequestSize = NULL)
+    withr::local_envvar(NDC_MAX_UPLOAD_MB = bad)
+    ndc_setup()
+    expect_equal(max_upload_mb(), 100, info = bad)
+  }
+})
+
+test_that("the page tells how large an upload can be", {
+  withr::local_options(shiny.maxRequestSize = 42 * 1024^2)
+  expect_match(as.character(app_ui()), "can be up to 42 MB", fixed = TRUE)
+})

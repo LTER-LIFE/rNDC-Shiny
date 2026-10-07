@@ -3,6 +3,7 @@ server_download <- function(input, output, session, state, helpers) {
   overview <- state$overview
   download_msgs <- state$download_msgs
   prepared_zip <- state$prepared_zip
+  retrieving <- state$retrieving
   mytoken <- state$mytoken
   agro_token <- state$agro_token
 
@@ -12,62 +13,74 @@ server_download <- function(input, output, session, state, helpers) {
     ov <- overview()
     req(nrow(ov) > 0)
 
-    if (save_files) {
-      if (is.null(workdir)) {
-        # unique per call: all sessions share one R process and one tempdir()
-        workdir <- tempfile("ndc_export_")
-      }
-      if (dir.exists(workdir)) unlink(workdir, recursive = TRUE)
-      dir.create(workdir, recursive = TRUE)
-    } else {
-      workdir <- NULL
-    }
-
     download_msgs(character(0))
-    local_msgs <- character(0)
-    results <- list()
-    manifest_rows <- list()
-
-    withProgress(message = "Retrieving datasets...", value = 0, {
-      for (i in seq_len(nrow(ov))) {
-        res <- retrieve_row(ov[i, ], i, workdir, ndc_token = mytoken, adc_token = agro_token)
-        if (!is.null(res$data)) results[[res$name]] <- res$data
-        manifest_rows <- c(manifest_rows, res$manifest)
-        local_msgs <- c(local_msgs, res$messages)
-        incProgress(1 / nrow(ov))
-      }
-    })
-
-    manifest_df <- if (length(manifest_rows) > 0) dplyr::bind_rows(manifest_rows) else tibble::tibble()
-    produced_any <- any_data_produced(manifest_df)
-
-    if (save_files) {
-      utils::write.csv(manifest_df, file.path(workdir, "download_summary.csv"), row.names = FALSE)
-
-      # Only write a zip when data was actually produced.
-      if (!is.null(zipfile) && produced_any) zip_export(workdir, zipfile)
-      # The zip is the deliverable: don't leave the export folder in the shared tempdir()
-      if (!is.null(zipfile)) unlink(workdir, recursive = TRUE)
-    }
+    out <- withProgress(
+      message = "Retrieving datasets...", value = 0,
+      retrieve_and_package(ov, zipfile, save_files, workdir, ndc_token = mytoken, adc_token = agro_token,
+                           progress = report_progress)
+    )
 
     # Show what happened to each dataset ("Retrieved: ...", "Failed: ... - reason") in the messages
     # panel. The no-data notice is added by the download pre-check observer.
-    download_msgs(local_msgs)
+    download_msgs(out$messages)
+    out
+  }
 
-    out <- list(
-      datasets = results,
-      overview = ov,
-      messages = download_msgs(),
-      summary = manifest_df,
-      produced_any = produced_any
-    )
-
-    if (save_files) {
-      out$out_dir <- if (is.null(zipfile)) workdir  # with a zip the folder is removed
-      out$zipfile <- zipfile
+  # Run a retrieval and hand its result to `on_done`. In the app's own process the result is there at once; in
+  # the asynchronous mode (see R/async.R) the retrieval runs in a background process, the app stays free for
+  # everyone, and `on_done` is called when it is finished. A session retrieves one overview at a time.
+  run_retrieval <- function(zipfile = NULL, save_files = TRUE, return_data = TRUE, on_done) {
+    if (isTRUE(retrieving())) {
+      showNotification("A retrieval is already running: wait until it is done.", type = "warning")
+      return(invisible(NULL))
+    }
+    if (!async_enabled()) {
+      on_done(retrieve_and_save(zipfile = zipfile, save_files = save_files))
+      return(invisible(NULL))
     }
 
-    out
+    ov <- overview()
+    req(nrow(ov) > 0)
+    retrieving(TRUE)
+    download_msgs(character(0))
+    progress_file <- tempfile("ndc_progress_")
+    progress <- async_progress(session, progress_file)
+    finish <- function() {
+      progress$close()
+      retrieving(FALSE)
+    }
+
+    # everything the job needs is passed to it: it has no access to the session
+    job <- retrieve_and_package
+    writer <- progress_writer(progress_file)
+    ndc_token <- mytoken
+    adc_token <- agro_token
+    promises::then(
+      promises::future_promise(
+        job(ov, zipfile, save_files, NULL, ndc_token, adc_token, progress = writer,
+            return_data = return_data, pack = TRUE),
+        globals = list(job = job, ov = ov, zipfile = zipfile, save_files = save_files, ndc_token = ndc_token,
+                       adc_token = adc_token, writer = writer, return_data = return_data),
+        seed = NULL
+      ),
+      onFulfilled = function(res) {
+        finish()
+        res$datasets <- lapply(res$datasets, unpack_result)
+        download_msgs(res$messages)
+        on_done(res)
+      },
+      onRejected = function(e) {
+        finish()
+        # the session is passed explicitly: in a callback there may be no default one
+        showNotification(paste0("The retrieval failed: ", conditionMessage(e)), type = "error", duration = 15,
+                         session = session)
+      }
+    ) |>
+      # whatever else goes wrong in the callbacks must not disappear as an unhandled promise error
+      promises::catch(function(e) {
+        message("Unexpected error after a retrieval: ", conditionMessage(e))
+      })
+    invisible(NULL)
   }
 
   output$download_ui <- renderUI({
@@ -92,22 +105,27 @@ server_download <- function(input, output, session, state, helpers) {
   # If it does, remember the built zip and trigger the hidden download button.
   observeEvent(input$check_and_download, {
     tmp_zip <- tempfile(fileext = ".zip")
-    res <- retrieve_and_save(zipfile = tmp_zip, save_files = TRUE)
-    produced <- isTRUE(res$produced_any)
-    if (!produced || !file.exists(tmp_zip)) {
-      prepared_zip(NULL)
-      showNotification(
-        "No data is available within your selection. Please try a different area, time period, or dataset.",
-        type = "warning", duration = 8
-      )
-      download_msgs(c("No data is available within your selection. Please try a different area, time period, or dataset.",
-                      res$messages))
-    } else {
-      old_zip <- isolate(prepared_zip())
-      if (!is.null(old_zip)) unlink(old_zip)
-      prepared_zip(tmp_zip)
-      session$sendCustomMessage("ndc_trigger_download", TRUE)
-    }
+    run_retrieval(zipfile = tmp_zip, save_files = TRUE, return_data = FALSE, on_done = function(res) {
+      if (session$isClosed()) {  # the user left while the retrieval was running
+        unlink(tmp_zip)
+        return(invisible(NULL))
+      }
+      produced <- isTRUE(res$produced_any)
+      if (!produced || !file.exists(tmp_zip)) {
+        prepared_zip(NULL)
+        showNotification(
+          "No data is available within your selection. Please try a different area, time period, or dataset.",
+          type = "warning", duration = 8, session = session
+        )
+        download_msgs(c("No data is available within your selection. Please try a different area, time period, or dataset.",
+                        res$messages))
+      } else {
+        old_zip <- isolate(prepared_zip())
+        if (!is.null(old_zip)) unlink(old_zip)
+        prepared_zip(tmp_zip)
+        session$sendCustomMessage("ndc_trigger_download", TRUE)
+      }
+    })
   })
 
   # Remove the prepared zip when the session ends.
@@ -139,8 +157,7 @@ server_download <- function(input, output, session, state, helpers) {
   })
 
   observeEvent(input$return_to_r, {
-    res <- retrieve_and_save(save_files = FALSE)
-    stopApp(res)
+    run_retrieval(save_files = FALSE, return_data = TRUE, on_done = return_data_to_r)
   })
 
   invisible(list(retrieve_and_save = retrieve_and_save))
