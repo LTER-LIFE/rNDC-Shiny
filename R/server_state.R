@@ -37,6 +37,7 @@ create_state <- function(ndc_token, adc_token) {
     prepared_zip = reactiveVal(NULL),
     # is a retrieval of this session running in the background?
     retrieving = reactiveVal(FALSE),
+    job_id = reactiveVal(NULL),  # the background job of the session (see R/jobs.R)
 
     # credentials
     mytoken = ndc_token,

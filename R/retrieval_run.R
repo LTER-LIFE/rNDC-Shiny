@@ -15,8 +15,8 @@ retrieve_overview <- function(ov, workdir, ndc_token, adc_token, progress = no_p
   for (i in seq_len(n)) {
     label <- paste0(ov$dataset[i], " (", ov$polygon[i], ")")
     progress(detail = label, value = (i - 1) / n)
-    # the retrieval functions say how far they are (e.g. "Downloading ... (3/10)"): show it
-    res <- with_progress_messages(
+    # the retrieval functions say how far they are (see rNDC::ndc_with_progress()): show it
+    res <- with_request_progress(
       retrieve_row(ov[i, ], i, workdir, ndc_token = ndc_token, adc_token = adc_token), label, i, n, progress
     )
     if (!is.null(res$data)) results[[res$name]] <- res$data

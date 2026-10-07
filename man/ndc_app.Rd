@@ -23,10 +23,12 @@ Shiny's own default is 5 MB). \code{NDC_MAX_REQUEST_SECONDS} sets the longest re
 is accepted (default 300 seconds): the overview is estimated when a dataset is added, and a retrieval keeps
 the app busy until it is done.
 
-In a non-interactive session (a deployment, e.g. the Docker image) the retrievals run in background R processes
-(\code{future} workers), so that a long one does not hold the other users up; \code{NDC_ASYNC} (\code{true} or \code{false})
-chooses the mode, and \code{NDC_WORKERS} sets the number of workers (default: up to 4). In an interactive R
-session retrieval happens in the session itself, unless \code{NDC_ASYNC=true}.
+In a non-interactive session (a deployment, e.g. the Docker image) the retrievals run in background R processes,
+so that a long one does not hold the other users up; \code{NDC_ASYNC} (\code{true} or \code{false}) chooses the mode, and
+\code{NDC_WORKERS} sets the number of processes that run at the same time (default: up to 4). A retrieval that
+finds all of them busy waits in a queue (the page shows its position; \code{NDC_MAX_QUEUE}, default 20, is the
+number that may wait), and can be cancelled. In an interactive R session retrieval happens in the session
+itself, unless \code{NDC_ASYNC=true}.
 }
 \seealso{
 \code{\link[=ndc_gui]{ndc_gui()}}

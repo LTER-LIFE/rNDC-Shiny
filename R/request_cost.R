@@ -30,7 +30,7 @@ format_duration <- function(seconds) {
 
 long_retrieval_warning <- function(seconds) {
   paste0("Retrieving the datasets in the overview will take ", format_duration(seconds), ". ",
-         if (async_enabled()) "It runs in the background: the progress bar shows where it is."
+         if (async_enabled()) "It runs in the background: the progress bar shows where it is, and you can cancel it."
          else "The app is busy until it is done.")
 }
 
@@ -47,30 +47,27 @@ report_progress <- function(detail = NULL, value = NULL) {
   shiny::setProgress(value = value, detail = detail)
 }
 
-# What a message of a retrieval function says about the progress: the text to show, and the position of
-# the bar if the message ends in a count like "(3/10)" (the 3rd of 10 requests is starting). `index` is
-# the row of the overview and `n` the number of rows, so the bar covers all of them.
-progress_from_message <- function(message, label, index, n) {
+# What a report of a retrieval function (rNDC::ndc_with_progress(): "Downloading ... (3/10)", request 3 of 10 is
+# starting) says about the progress: the text to show, and the position of the bar when the request is counted.
+# `index` is the row of the overview and `n` the number of rows, so the bar covers all of them.
+progress_from_report <- function(message, current, total, label, index, n) {
   message <- trimws(gsub("\\s+", " ", message))
   if (!nzchar(message)) return(list(detail = NULL, value = NULL))
 
   value <- NULL
-  count <- regmatches(message, regexec("\\((\\d+)/(\\d+)\\)$", message))[[1]]
-  if (length(count) == 3 && as.numeric(count[3]) > 0) {
-    value <- (index - 1 + (as.numeric(count[2]) - 1) / as.numeric(count[3])) / n
-    value <- min(1, max(0, value))
+  if (!is.na(current) && !is.na(total) && total > 0) {
+    value <- min(1, max(0, (index - 1 + (current - 1) / total) / n))
   }
   shown <- if (nchar(message) > 70) paste0(substr(message, 1, 67), "...") else message
   list(detail = paste0(label, ": ", shown), value = value)
 }
 
-# Evaluate `expr` and show the messages that it emits (rNDC says e.g. "Downloading 2024-01-01 -> 2024-07-18
-# (1/10)") as the progress detail. The messages still reach the console. Some functions emit many (one per
-# day), so the page is updated at most four times a second, unless the message moves the bar.
-with_progress_messages <- function(expr, label, index, n, report = report_progress) {
+# Evaluate `expr` and show what the rNDC functions report (one report before each request) as the progress
+# detail and the position of the bar. Reports without a count are passed on at most four times a second.
+with_request_progress <- function(expr, label, index, n, report = report_progress) {
   last <- 0
-  withCallingHandlers(expr, message = function(m) {
-    p <- progress_from_message(conditionMessage(m), label, index, n)
+  rNDC::ndc_with_progress(expr, report = function(message, current, total) {
+    p <- progress_from_report(message, current, total, label, index, n)
     now <- as.numeric(Sys.time())
     if (!is.null(p$detail) && (!is.null(p$value) || now - last > 0.25)) {
       last <<- now

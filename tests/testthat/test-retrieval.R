@@ -253,7 +253,7 @@ test_that("the export folder is returned only when it still exists", {
   })
 })
 
-test_that("the progress follows the messages of a long retrieval", {
+test_that("the progress follows what the rNDC functions report during a long retrieval", {
   rec <- new.env()
   rec$calls <- list()
   local_mocked_bindings(
@@ -265,7 +265,8 @@ test_that("the progress follows the messages of a long retrieval", {
   local_mocked_bindings(
     get_closest_meteostation = function(...) list(closest_id = "260"),
     get_meteo_for_long_period = function(...) {
-      for (i in 1:4) message("Downloading chunk ", i, " (", i, "/4)")
+      # as the real function does: report before each request (see rNDC::ndc_with_progress())
+      for (i in 1:4) getOption("rNDC.progress")(paste0("Downloading chunk ", i, " (", i, "/4)"), i, 4L)
       meteo
     },
     .package = "rNDC"

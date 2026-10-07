@@ -71,15 +71,16 @@ For Land Use and Nitrogen, the app tells you whether the selected area has data 
 
 The NDVI rasters and long Weather periods make many requests (one download per day for NDVI rasters, one request per 200 days for Weather). When you add a dataset, the app estimates how long the whole overview will take to retrieve (NDVI rasters: about a quarter of a second per day, so a year takes about a minute and a half). Above about a minute it warns you, and above a limit it refuses and asks for a shorter period. While retrieving, the progress bar shows where it is.
 
-**Where the retrieval runs.** In an interactive R session (`ndc_gui()` from R), the app retrieves in your R session, and is busy until it is done; the limit is 5 minutes. In a deployment (a non-interactive session, such as the Docker image) the retrieval runs in a background R process (`future` workers), so that a long retrieval does not hold up the other users; the limit is then 15 minutes. Settings:
+**Where the retrieval runs.** In an interactive R session (`ndc_gui()` from R), the app retrieves in your R session, and is busy until it is done; the limit is 5 minutes. In a deployment (a non-interactive session, such as the Docker image) the retrieval runs in a background R process, so that a long retrieval does not hold up the other users; the limit is then 15 minutes. When all background processes are busy the retrieval waits in a queue (the progress bar shows the position), and while it waits or runs a "Cancel retrieval" button stops it. Settings:
 
 | Variable | Meaning |
 |---|---|
 | `NDC_ASYNC` | `true` or `false`: retrieve in background processes or not (default: yes when not interactive). |
 | `NDC_WORKERS` | The number of background processes, i.e. retrievals that run at the same time; more wait in a queue (default: up to 4, depending on the cores). Each uses memory (a few hundred MB). |
+| `NDC_MAX_QUEUE` | The number of retrievals that may wait for a free process (default 20); beyond that, new retrievals are refused with a message. |
 | `NDC_MAX_REQUEST_SECONDS` | The longest retrieval that is accepted (the option `rNDC.Shiny.max_request_seconds` does the same). |
 
-A session retrieves one overview at a time. In the background mode, the package must be installed (the processes load it), or R must be able to fork; with `devtools::load_all()` the app uses forked processes.
+A session retrieves one overview at a time. In the background mode, the package must be installed (the processes load it), or loaded with `devtools::load_all()` (the processes then load it from its source folder, with `pkgload`). A user who leaves the page cancels the retrieval.
 
 Uploads can be up to 100 MB in total (set `NDC_MAX_UPLOAD_MB` to change this; Shiny's own default is 5 MB).
 

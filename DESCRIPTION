@@ -20,8 +20,8 @@ Roxygen: list(markdown = TRUE)
 Depends: R (>= 4.1)
 Description: A Shiny app that gives a graphical user interface to find and get data from LTER-LIFE's NatureDataCube (and the related AgroDataCube and GroenMonitor services), built on the functions of the 'rNDC' package.
 License: Apache License (>= 2)
-Imports: shiny, htmltools, future, promises, shinyjs, leaflet, leaflet.extras, sf, terra, dplyr, tibble, geojsonsf, jsonlite, lubridate, zip, magrittr, stats, tools, utils, rNDC (>= 0.5)
-Suggests: later, testthat (>= 3.2.0), webmockr, withr
+Imports: shiny, htmltools, callr, parallel, shinyjs, leaflet, leaflet.extras, sf, terra, dplyr, tibble, geojsonsf, jsonlite, lubridate, zip, magrittr, stats, tools, utils, rNDC (>= 0.5)
+Suggests: pkgload, testthat (>= 3.2.0), webmockr, withr
 Remotes: LTER-LIFE/rNDC@texel26, bhaskarvk/leaflet.extras
 RoxygenNote: 7.3.3
 Config/testthat/edition: 3

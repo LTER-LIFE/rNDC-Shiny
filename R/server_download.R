@@ -4,6 +4,7 @@ server_download <- function(input, output, session, state, helpers) {
   download_msgs <- state$download_msgs
   prepared_zip <- state$prepared_zip
   retrieving <- state$retrieving
+  job_id <- state$job_id
   mytoken <- state$mytoken
   agro_token <- state$agro_token
 
@@ -26,11 +27,15 @@ server_download <- function(input, output, session, state, helpers) {
     out
   }
 
+  # The job of this session in the background mode: its id, and what to do when it ends or the user leaves.
+  # (A plain environment: the reactive values of a closed session cannot be read, see `job_id`.)
+  current <- new.env()
+
   # Run a retrieval and hand its result to `on_done`. In the app's own process the result is there at once; in
-  # the asynchronous mode (see R/async.R) the retrieval runs in a background process, the app stays free for
-  # everyone, and `on_done` is called when it is finished. A session retrieves one overview at a time. If the
-  # user has left meanwhile, `on_abandoned` is called instead (to remove what was made): the reactive values of
-  # a closed session cannot be used any more.
+  # the asynchronous mode (see R/async.R and R/jobs.R) the retrieval runs in a background process, the app stays
+  # free for everyone, and `on_done` is called when it is finished. The job waits in a queue when all workers
+  # are busy, and the user can cancel it. A session retrieves one overview at a time. If the user leaves
+  # meanwhile, the job is cancelled, or `on_abandoned` is called with its result (to remove what was made).
   run_retrieval <- function(zipfile = NULL, save_files = TRUE, return_data = TRUE, on_done,
                             on_abandoned = function(res) invisible(NULL)) {
     if (isTRUE(retrieving())) {
@@ -44,64 +49,90 @@ server_download <- function(input, output, session, state, helpers) {
 
     ov <- overview()
     req(nrow(ov) > 0)
-    retrieving(TRUE)
-    download_msgs(character(0))
-    progress_file <- tempfile("ndc_progress_")
-    progress <- async_progress(session, progress_file)
-    finish <- function() {
-      progress$close()
-      if (!session$isClosed()) retrieving(FALSE)
+    jobs <- ndc_jobs()
+    id <- job_submit(
+      jobs, "retrieve_and_package",
+      list(ov = ov, zipfile = zipfile, save_files = save_files, workdir = NULL, ndc_token = mytoken,
+           adc_token = agro_token, return_data = return_data, pack = TRUE),
+      files = zipfile
+    )
+    if (is.null(id)) {
+      showNotification("The server is busy: too many retrievals are waiting. Try again in a few minutes.",
+                       type = "warning", duration = 10)
+      return(invisible(NULL))
     }
 
-    # everything the job needs is passed to it: it has no access to the session
-    job <- retrieve_and_package
-    writer <- progress_writer(progress_file)
-    ndc_token <- mytoken
-    adc_token <- agro_token
-    promises::then(
-      promises::future_promise(
-        job(ov, zipfile, save_files, NULL, ndc_token, adc_token, progress = writer,
-            return_data = return_data, pack = TRUE),
-        globals = list(job = job, ov = ov, zipfile = zipfile, save_files = save_files, ndc_token = ndc_token,
-                       adc_token = adc_token, writer = writer, return_data = return_data),
-        seed = NULL
-      ),
-      onFulfilled = function(res) {
-        finish()
-        if (session$isClosed()) return(on_abandoned(res))
-        res$datasets <- lapply(res$datasets, unpack_result)
-        download_msgs(res$messages)
-        on_done(res)
-      },
-      onRejected = function(e) {
-        finish()
-        if (session$isClosed()) return(invisible(NULL))
-        # the session is passed explicitly: in a callback there may be no default one
-        showNotification(paste0("The retrieval failed: ", conditionMessage(e)), type = "error", duration = 15,
-                         session = session)
-      }
-    ) |>
-      # whatever else goes wrong in the callbacks must not disappear as an unhandled promise error
-      promises::catch(function(e) {
-        message("Unexpected error after a retrieval: ", conditionMessage(e))
-      })
+    download_msgs(character(0))
+    retrieving(TRUE)
+    job_id(id)
+    current$jobs <- jobs
+    current$id <- id
+    current$on_abandoned <- on_abandoned
+    watch_job(jobs, id, session,
+              on_done = function(res) {
+                res$datasets <- lapply(res$datasets, unpack_result)
+                download_msgs(res$messages)
+                on_done(res)
+              },
+              on_failed = function(error) {
+                # the session is passed explicitly: in a callback there may be no default one
+                showNotification(paste0("The retrieval failed: ", error), type = "error", duration = 15,
+                                 session = session)
+              },
+              on_cancelled = function() showNotification("The retrieval was cancelled.", session = session),
+              finish = function() {
+                current$id <- NULL
+                retrieving(FALSE)
+                job_id(NULL)
+              })
     invisible(NULL)
   }
+
+  # The user cancels the retrieval that waits or runs
+  observeEvent(input$cancel_retrieval, {
+    if (!is.null(current$id)) job_cancel(current$jobs, current$id)  # watch_job() notices and cleans up
+  })
+
+  # The user leaves: stop the job (a waiting or running one is cancelled, and what it made removed), or, if it
+  # was finished already, let `on_abandoned` remove its result. No reactive values here: the session is closed.
+  session$onSessionEnded(function() {
+    id <- current$id
+    if (is.null(id)) return(invisible(NULL))
+    jobs <- current$jobs
+    job_tick(jobs)
+    if (identical(job_status(jobs, id)$state, "done")) {
+      out <- job_collect(jobs, id)
+      current$on_abandoned(out$value)
+    } else {
+      job_cancel(jobs, id)
+      job_collect(jobs, id)
+    }
+    current$id <- NULL
+  })
 
   output$download_ui <- renderUI({
     if (nrow(overview()) == 0) {
       div(style = "color: grey; font-style: italic;", "Download button will appear here once you add a dataset.")
     } else {
+      busy <- !is.null(job_id())
       div(style = "display:flex; gap:10px; align-items:center;",
-          # Visible button: checks for data first, then triggers the hidden
-          # real download only if there is something to download.
-          actionButton("check_and_download", "Download dataset(s)", class = "btn-custom"),
+          if (busy) {
+            tagList(
+              actionButton("cancel_retrieval", "Cancel retrieval", class = "btn-custom"),
+              span(style = "color: grey; font-style: italic;", "Retrieving in the background...")
+            )
+          } else {
+            # Visible button: checks for data first, then triggers the hidden
+            # real download only if there is something to download.
+            actionButton("check_and_download", "Download dataset(s)", class = "btn-custom")
+          },
+          # always there: the pre-check clicks it when the retrieval is done
           div(style = "position:absolute; left:-9999px; width:1px; height:1px; overflow:hidden;",
               downloadButton("download_data", "Download dataset(s)", class = "btn-custom")),
           # "Return data to R" stops the app and hands the data to the calling R
           # session (`x <- shiny::runApp(...)`). Only offered in an interactive
           # session: in a container it would just shut the app down.
-          if (interactive()) actionButton("return_to_r", "Return data to R (close app)", class = "btn-custom"))
+          if (interactive() && !busy) actionButton("return_to_r", "Return data to R (close app)", class = "btn-custom"))
     }
   })
 

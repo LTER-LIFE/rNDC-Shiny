@@ -12,10 +12,12 @@
 #' is accepted (default 300 seconds): the overview is estimated when a dataset is added, and a retrieval keeps
 #' the app busy until it is done.
 #'
-#' In a non-interactive session (a deployment, e.g. the Docker image) the retrievals run in background R processes
-#' (`future` workers), so that a long one does not hold the other users up; `NDC_ASYNC` (`true` or `false`)
-#' chooses the mode, and `NDC_WORKERS` sets the number of workers (default: up to 4). In an interactive R
-#' session retrieval happens in the session itself, unless `NDC_ASYNC=true`.
+#' In a non-interactive session (a deployment, e.g. the Docker image) the retrievals run in background R processes,
+#' so that a long one does not hold the other users up; `NDC_ASYNC` (`true` or `false`) chooses the mode, and
+#' `NDC_WORKERS` sets the number of processes that run at the same time (default: up to 4). A retrieval that
+#' finds all of them busy waits in a queue (the page shows its position; `NDC_MAX_QUEUE`, default 20, is the
+#' number that may wait), and can be cancelled. In an interactive R session retrieval happens in the session
+#' itself, unless `NDC_ASYNC=true`.
 #'
 #' @returns A `shiny.appobj`.
 #' @seealso [ndc_gui()]
@@ -25,7 +27,9 @@ ndc_app <- function() {
   ndc_setup()
   setup_async()
   shiny::addResourcePath("ndc-www", system.file("app", "www", package = "rNDC.Shiny"))
-  shiny::shinyApp(app_ui(), app_server)
+  shiny::shinyApp(app_ui(), app_server, onStart = function() {
+    shiny::onStop(function() job_shutdown(ndc_jobs()))
+  })
 }
 
 # Check the credentials and set the options that the app needs before it starts.

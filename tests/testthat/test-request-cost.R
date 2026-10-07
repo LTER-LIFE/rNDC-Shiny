@@ -58,54 +58,70 @@ test_that("durations are described in minutes", {
   expect_match(too_long_retrieval_message(700), "about 12 minutes.*limit of about 5 minutes")
 })
 
-test_that("a message that ends in a count moves the bar; any message becomes the detail", {
-  p <- progress_from_message("Downloading 2024-01-01 -> 2024-07-18 (1/4)", "Weather (A)", index = 1, n = 1)
+test_that("a report with a count moves the bar; any report becomes the detail", {
+  p <- progress_from_report("Downloading 2024-01-01 -> 2024-07-18 (1/4)", 1L, 4L, "Weather (A)", index = 1, n = 1)
   expect_equal(p$value, 0)  # the first of four requests is starting
   expect_equal(p$detail, "Weather (A): Downloading 2024-01-01 -> 2024-07-18 (1/4)")
 
-  expect_equal(progress_from_message("Downloading x (3/4)", "W", 1, 1)$value, 0.5)
+  expect_equal(progress_from_report("x", 3L, 4L, "W", 1, 1)$value, 0.5)
   # the bar covers all the rows: the 3rd of 4 requests of the 2nd of 5 rows
-  expect_equal(progress_from_message("Downloading x (3/4)", "W", 2, 5)$value, (1 + 2 / 4) / 5)
-  expect_equal(progress_from_message("Downloading x (4/4)\n", "W", 1, 1)$value, 0.75)  # trailing newline
+  expect_equal(progress_from_report("x", 3L, 4L, "W", 2, 5)$value, (1 + 2 / 4) / 5)
+  expect_equal(progress_from_report("x\n", 4L, 4L, "W", 1, 1)$value, 0.75)  # trailing newline
 
-  none <- progress_from_message("Skipping 20240520 (not available)", "NDVI (A)", 1, 2)
+  none <- progress_from_report("Skipping 20240520", NA_integer_, NA_integer_, "NDVI (A)", 1, 2)
   expect_null(none$value)
-  expect_equal(none$detail, "NDVI (A): Skipping 20240520 (not available)")
+  expect_equal(none$detail, "NDVI (A): Skipping 20240520")
 
-  long <- progress_from_message(strrep("x", 200), "L", 1, 1)
+  long <- progress_from_report(strrep("x", 200), 1L, 2L, "L", 1, 1)
   expect_lte(nchar(long$detail), 75)
   expect_match(long$detail, "\\.\\.\\.$")
 
-  expect_null(progress_from_message("  \n", "L", 1, 1)$detail)
+  expect_null(progress_from_report("  \n", 1L, 2L, "L", 1, 1)$detail)
 })
 
-test_that("messages of the evaluated code are shown as progress and still reach the console", {
+test_that("what the rNDC functions report is shown as progress", {
   rec <- new.env()
   rec$calls <- list()
   local_mocked_bindings(report_progress = function(detail = NULL, value = NULL) {
     rec$calls[[length(rec$calls) + 1]] <- list(detail = detail, value = value)
   })
 
-  result <- NULL
-  expect_message(
-    result <- with_progress_messages({
-      message("Downloading a (1/2)")
-      message("Downloading b (2/2)")
-      "done"
-    }, "Weather (A)", 1, 1),
-    "Downloading a"
-  )
+  # the contract with rNDC: a function reports to the option rNDC.progress (as rNDC::get_meteo_for_long_period does)
+  result <- with_request_progress({
+    report <- getOption("rNDC.progress")
+    report("Downloading a (1/2)", 1L, 2L)
+    report("Downloading b (2/2)", 2L, 2L)
+    "done"
+  }, "Weather (A)", 1, 1)
   expect_equal(result, "done")
   expect_equal(vapply(rec$calls, function(x) x$value, numeric(1)), c(0, 0.5))
   expect_equal(rec$calls[[2]]$detail, "Weather (A): Downloading b (2/2)")
+  expect_null(getOption("rNDC.progress"))  # only while the code runs
 })
 
-test_that("a flood of messages without a count updates the page only now and then", {
+test_that("a weather request of rNDC moves the bar", {
+  rec <- new.env()
+  rec$values <- numeric(0)
+  local_mocked_bindings(report_progress = function(detail = NULL, value = NULL) rec$values <- c(rec$values, value))
+  local_mocked_bindings(
+    get_meteo_for_period = function(...) sf::st_sf(a = 1, geometry = sf::st_sfc(sf::st_point(c(0, 0)), crs = 4326)),
+    .package = "rNDC"
+  )
+  suppressMessages(with_request_progress(
+    rNDC::get_meteo_for_long_period(310, "2024-01-01", "2024-01-20", token = "t", by_days = 7), "Weather (A)", 1, 1
+  ))
+  expect_equal(rec$values, c(0, 1 / 3, 2 / 3))
+})
+
+test_that("a flood of reports without a count updates the page only now and then", {
   rec <- new.env()
   rec$n <- 0
   local_mocked_bindings(report_progress = function(detail = NULL, value = NULL) rec$n <- rec$n + 1)
 
-  suppressMessages(with_progress_messages(for (i in 1:500) message("Skipping day ", i), "NDVI (A)", 1, 1))
+  with_request_progress({
+    report <- getOption("rNDC.progress")
+    for (i in 1:500) report(paste("Skipping day", i), NA_integer_, NA_integer_)
+  }, "NDVI (A)", 1, 1)
   expect_lt(rec$n, 10)
   expect_gte(rec$n, 1)
 })

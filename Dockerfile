@@ -34,7 +34,7 @@ COPY DESCRIPTION /tmp/rNDC.Shiny/DESCRIPTION
 RUN --mount=type=secret,id=github_pat,required=false <<INSTALL
 set -e
 if [ -s /run/secrets/github_pat ]; then export GITHUB_PAT="$(cat /run/secrets/github_pat)"; fi
-R -q -e "remotes::install_deps('/tmp/rNDC.Shiny', upgrade = 'never'); pkgs <- c('shiny', 'leaflet.extras', 'future', 'promises', 'sf', 'terra'); missing <- pkgs[!vapply(pkgs, requireNamespace, NA, quietly = TRUE)]; if (length(missing)) stop('not installed: ', paste(missing, collapse = ', '))"
+R -q -e "remotes::install_deps('/tmp/rNDC.Shiny', upgrade = 'never'); pkgs <- c('shiny', 'leaflet.extras', 'callr', 'sf', 'terra'); missing <- pkgs[!vapply(pkgs, requireNamespace, NA, quietly = TRUE)]; if (length(missing)) stop('not installed: ', paste(missing, collapse = ', '))"
 INSTALL
 
 # 3. The package itself: this installs the Shiny app and its resources (inst/app). The last command fails the

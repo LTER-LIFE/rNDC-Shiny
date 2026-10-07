@@ -1,53 +1,40 @@
-# Retrieving in a background process, so that a long retrieval does not hold the app up.
+# Retrieving in background processes (R/async.R, R/jobs.R), with a queue and a cancel button.
 
 raster <- function() terra::rast(nrows = 2, ncols = 2, vals = 1:4)
 
 # ---- when and how ----
 
-test_that("the background mode is off by default, and the plan is only set when it is on", {
+test_that("the background mode is off by default, and the options are only set when it is on", {
   expect_false(async_enabled())
 
-  skip_if_not(future::supportsMulticore())
-  old <- future::plan(future::sequential)
-  withr::defer(future::plan(old))
-
+  withr::local_options(rNDC.Shiny.async = NULL, rNDC.Shiny.workers = NULL, rNDC.Shiny.max_queue = NULL)
   withr::local_envvar(NDC_ASYNC = "false")
   expect_false(setup_async())
   expect_false(async_enabled())
-  expect_s3_class(future::plan(), "sequential")
+  expect_null(getOption("rNDC.Shiny.workers"))
 
-  withr::local_options(rNDC.Shiny.async = NULL)
-  withr::local_envvar(NDC_ASYNC = "true", NDC_WORKERS = "3")
+  withr::local_envvar(NDC_ASYNC = "true", NDC_WORKERS = "3", NDC_MAX_QUEUE = "7")
   expect_true(setup_async())
   expect_true(async_enabled())
-  expect_false(inherits(future::plan(), "sequential"))
-  expect_equal(future::nbrOfWorkers(), 3)
+  expect_equal(getOption("rNDC.Shiny.workers"), 3)
+  expect_equal(getOption("rNDC.Shiny.max_queue"), 7)
+
+  withr::local_envvar(NDC_WORKERS = "nonsense", NDC_MAX_QUEUE = "0")  # not usable: the defaults
+  setup_async()
+  expect_equal(getOption("rNDC.Shiny.workers"), default_workers())
+  expect_equal(getOption("rNDC.Shiny.max_queue"), default_max_queue)
 })
 
 test_that("without NDC_ASYNC the mode follows whether the session is interactive", {
-  skip_if_not(future::supportsMulticore())
-  old <- future::plan(future::sequential)
-  withr::defer(future::plan(old))
   withr::local_options(rNDC.Shiny.async = NULL)
-  withr::local_envvar(NDC_ASYNC = "", NDC_WORKERS = "1")
+  withr::local_envvar(NDC_ASYNC = "")
   expect_equal(setup_async(), !interactive())
 })
 
-test_that("a plan that was set already is kept", {
-  skip_if_not(future::supportsMulticore())
-  old <- future::plan(future::multicore, workers = 2)
-  withr::defer(future::plan(old))
-  withr::local_options(rNDC.Shiny.async = NULL)
-  withr::local_envvar(NDC_ASYNC = "true", NDC_WORKERS = "5")
-  setup_async()
-  expect_equal(future::nbrOfWorkers(), 2)
-})
-
-test_that("the kind of process depends on whether the package is installed", {
-  expect_identical(async_strategy(dev = FALSE, multicore = FALSE), future::multisession)
-  expect_identical(async_strategy(dev = FALSE, multicore = TRUE), future::multisession)
-  expect_identical(async_strategy(dev = TRUE, multicore = TRUE), future::multicore)
-  expect_null(async_strategy(dev = TRUE, multicore = FALSE))
+test_that("a package that is only loaded needs pkgload for the workers", {
+  expect_true(async_possible(dev = FALSE, pkgload = FALSE))
+  expect_true(async_possible(dev = TRUE, pkgload = TRUE))
+  expect_false(async_possible(dev = TRUE, pkgload = FALSE))
   expect_gte(default_workers(), 1)
   expect_lte(default_workers(), 4)
 })
@@ -59,6 +46,7 @@ test_that("the longer limit and the wording follow the mode", {
   withr::local_options(rNDC.Shiny.async = TRUE)
   expect_equal(max_request_seconds(), 900)
   expect_match(long_retrieval_warning(120), "runs in the background")
+  expect_match(long_retrieval_warning(120), "cancel")
 
   withr::local_options(rNDC.Shiny.max_request_seconds = 100)  # an explicit limit always wins
   expect_equal(max_request_seconds(), 100)
@@ -84,34 +72,196 @@ test_that("the progress is written to a file and read back, whole or not at all"
   expect_null(read_progress(file))
 })
 
-test_that("a worker's progress reaches the main process through the file", {
-  skip_if_not(future::supportsMulticore())
-  progress_file <- withr::local_tempfile()
-  job <- function(write) { write(detail = "in the worker", value = 0.7); "done" }
-  f <- future::future(job(progress_writer(progress_file)),
-                      globals = list(job = job, progress_writer = progress_writer, progress_file = progress_file),
-                      seed = NULL, lazy = FALSE)
-  expect_equal(future::value(f), "done")
-  expect_equal(read_progress(progress_file), list(value = 0.7, detail = "in the worker"))
+# ---- the queue ----
+
+test_that("jobs run up to the number of workers, and the others wait in order", {
+  fake <- fake_manager(workers = 2)
+  m <- fake$manager
+  a <- job_submit(m, "f", list())
+  b <- job_submit(m, "f", list())
+  c <- job_submit(m, "f", list())
+  d <- job_submit(m, "f", list())
+
+  expect_equal(fake$rec$started, c(a, b))
+  expect_equal(job_status(m, a)$state, "running")
+  expect_equal(job_status(m, c)$state, "queued")
+  expect_equal(c(job_status(m, c)$position, job_status(m, d)$position), c(1, 2))
+  expect_equal(job_status(m, d)$queued, 2)
+  expect_equal(job_status(m, a)$position, 0)
+
+  # when a job ends, the next one starts, in the order of submission
+  finish_fake_job(fake, a, value = "A")
+  job_tick(m)
+  expect_equal(fake$rec$started, c(a, b, c))
+  expect_equal(job_status(m, d)$position, 1)
+  expect_equal(job_status(m, a)$state, "done")  # finished jobs wait for their result to be collected
+  expect_equal(job_collect(m, a)$value, "A")
+  expect_null(job_status(m, a))  # and are then forgotten
 })
 
-test_that("the progress bar of the page follows the file, and cleans up", {
-  session <- shiny::MockShinySession$new()
-  file <- withr::local_tempfile()
-  progress_writer(file)(detail = "Weather (A)", value = 0.3)
+test_that("too many waiting jobs are refused, but a free worker always takes one", {
+  fake <- fake_manager(workers = 1, max_queue = 1)
+  m <- fake$manager
+  expect_false(is.null(job_submit(m, "f", list())))  # runs
+  expect_false(is.null(job_submit(m, "f", list())))  # waits
+  expect_null(job_submit(m, "f", list()))            # too many
 
-  shiny::withReactiveDomain(session, {
-    p <- async_progress(session, file)
-    session$flushReact()
-    p$close()
+  none <- fake_manager(workers = 1, max_queue = 0)$manager
+  expect_false(is.null(job_submit(none, "f", list())))  # no queue is needed when a worker is free
+  expect_null(job_submit(none, "f", list()))
+})
+
+test_that("a waiting job can be cancelled and the others move up", {
+  fake <- fake_manager(workers = 1)
+  m <- fake$manager
+  a <- job_submit(m, "f", list())
+  b <- job_submit(m, "f", list())
+  c <- job_submit(m, "f", list())
+  dir <- m$jobs[[b]]$dir
+
+  expect_true(job_cancel(m, b))
+  expect_equal(job_status(m, b)$state, "cancelled")
+  expect_false(dir.exists(dir))
+  expect_equal(job_status(m, c)$position, 1)
+  expect_length(fake$rec$killed, 0)  # nothing was running for it
+  expect_false(job_cancel(m, b))     # nothing left to cancel
+  expect_equal(job_collect(m, b)$state, "cancelled")
+})
+
+test_that("a running job is killed, what it made is removed, and the next job takes its place", {
+  fake <- fake_manager(workers = 1)
+  m <- fake$manager
+  made <- withr::local_tempfile()
+  writeLines("zip", made)
+  a <- job_submit(m, "f", list(), files = made)
+  b <- job_submit(m, "f", list())
+  dir <- m$jobs[[a]]$dir
+
+  expect_true(job_cancel(m, a))
+  expect_equal(fake$rec$killed, a)
+  expect_false(file.exists(made))
+  expect_false(dir.exists(dir))
+  expect_equal(fake$rec$started, c(a, b))
+  expect_equal(job_status(m, b)$state, "running")
+
+  # a job that has ended cannot be cancelled any more
+  finish_fake_job(fake, b, value = 1)
+  job_tick(m)
+  expect_false(job_cancel(m, b))
+  expect_equal(job_collect(m, b)$value, 1)
+})
+
+test_that("a job that fails is reported with the reason", {
+  fake <- fake_manager(workers = 2)
+  m <- fake$manager
+  a <- job_submit(m, "f", list())
+  b <- job_submit(m, "f", list())
+
+  finish_fake_job(fake, a, error = "it broke")
+  finish_fake_job(fake, b, crash = TRUE)  # the process is gone and left nothing
+  job_tick(m)
+  expect_equal(job_status(m, a)$state, "failed")
+  expect_equal(job_status(m, a)$error, "it broke")
+  expect_equal(job_status(m, b)$state, "failed")
+  expect_match(job_status(m, b)$error, "stopped unexpectedly.*stderr of the process")
+  out <- job_collect(m, b)
+  expect_equal(out$state, "failed")
+  expect_null(out$value)
+
+  # a process that cannot be started is a failure too, and does not block the queue
+  broken <- new_job_manager(1, start = function(job) stop("no process"))
+  id <- job_submit(broken, "f", list())
+  expect_equal(job_status(broken, id)$state, "failed")
+  expect_match(job_status(broken, id)$error, "could not be started: no process")
+})
+
+test_that("the progress of a running job is visible, and shutting down stops everything", {
+  fake <- fake_manager(workers = 1)
+  m <- fake$manager
+  a <- job_submit(m, "f", list())
+  b <- job_submit(m, "f", list())
+  expect_null(job_status(m, a)$progress)
+  progress_writer(m$jobs[[a]]$progress_file)(detail = "Weather (A)", value = 0.2)
+  expect_equal(job_status(m, a)$progress, list(value = 0.2, detail = "Weather (A)"))
+  expect_gte(job_status(m, a)$running, 0)
+
+  dirs <- vapply(m$jobs, function(job) job$dir, "")
+  job_shutdown(m)
+  expect_equal(fake$rec$killed, a)
+  expect_false(any(dir.exists(dirs)))
+  expect_length(m$jobs, 0)
+})
+
+test_that("the text for a waiting user gives the position", {
+  expect_match(queue_text(list(position = 2, queued = 3)), "Position 2 of 3 in the queue")
+})
+
+# ---- real processes ----
+
+real_manager <- function(workers = 1) new_job_manager(workers, start = start_job_process)
+
+# Tick until the job leaves "queued"/"running"
+wait_for_job <- function(m, id) {
+  wait_for(function() {
+    job_tick(m)
+    !job_status(m, id)$state %in% c("queued", "running")
   })
-  expect_false(file.exists(file))
+}
+
+test_that("a job runs in a new R process, reports its progress and returns its value", {
+  m <- real_manager()
+  on.exit(job_shutdown(m), add = TRUE)
+  poly <- sf::st_sf(geometry = sf::st_sfc(sf::st_polygon(list(rbind(c(0, 0), c(1, 0), c(1, 1), c(0, 0)))), crs = 4326))
+  # a dataset without retrieval: runs offline
+  ov <- tibble::tibble(dataset = "Vegetation structure", view = "Geodata", year = NA_integer_, polygon = "p",
+                       wkt = sf::st_as_text(sf::st_geometry(poly)), polygon_sf = list(poly),
+                       date_from = as.Date(NA), date_to = as.Date(NA))
+  id <- job_submit(m, "retrieve_and_package",
+                   list(ov = ov, zipfile = NULL, save_files = FALSE, workdir = NULL, ndc_token = "t",
+                        adc_token = "t", return_data = TRUE, pack = TRUE))
+  wait_for_job(m, id)
+  expect_equal(job_status(m, id)$state, "done", info = job_status(m, id)$error)
+  expect_equal(read_progress(m$jobs[[id]]$progress_file)$value, 1)
+  out <- job_collect(m, id)
+  expect_equal(out$value$messages, "Skipped: Vegetation structure is not wired to a retrieval endpoint yet.")
+  expect_false(out$value$produced_any)
 })
 
-test_that("a job runs in a fresh background process, with the package installed there", {
-  # New R processes load the installed package, so this runs when the package is installed (R CMD check),
-  # not with load_all() (the tests above fork the process instead). Forked processes cannot show what goes
-  # wrong when what is sent to a process depends on the session that sends it (see progress_writer()).
+test_that("an error in a process is reported with its message", {
+  m <- real_manager()
+  on.exit(job_shutdown(m), add = TRUE)
+  id <- job_submit(m, "stop", list("it went wrong"))
+  wait_for_job(m, id)
+  expect_equal(job_status(m, id)$state, "failed")
+  expect_equal(job_status(m, id)$error, "it went wrong")
+})
+
+test_that("cancelling a running job ends its process and removes its files", {
+  m <- real_manager()
+  on.exit(job_shutdown(m), add = TRUE)
+  id <- job_submit(m, "Sys.sleep", list(120))
+  expect_equal(job_status(m, id)$state, "running")
+  handle <- m$jobs[[id]]$handle
+  dir <- m$jobs[[id]]$dir
+  expect_true(handle$is_alive())
+
+  expect_true(job_cancel(m, id))
+  wait_for(function() !handle$is_alive(), timeout = 15)
+  expect_false(dir.exists(dir))
+})
+
+test_that("a process that dies without a result is a failed job", {
+  m <- real_manager()
+  on.exit(job_shutdown(m), add = TRUE)
+  id <- job_submit(m, "quit", list(save = "no", status = 3))
+  wait_for_job(m, id)
+  expect_equal(job_status(m, id)$state, "failed")
+  expect_match(job_status(m, id)$error, "stopped unexpectedly")
+})
+
+test_that("a job runs in a fresh process with the installed package", {
+  # What is sent to a process must not depend on the session that sends it. This runs when the package is
+  # installed (R CMD check): a fresh R process loads it, as in the container.
   skip_if(is_dev_package(), "the package is not installed")
 
   out <- system2(file.path(R.home("bin"), "Rscript"), test_path("scripts", "job-in-fresh-process.R"),
@@ -177,18 +327,56 @@ test_that("retrieve_and_package zips, and leaves nothing behind", {
   expect_identical(list.files(tempdir(), "^ndc_export_"), before)
 })
 
+# ---- the retrieval of a whole overview, without Shiny ----
+
+test_that("retrieve_and_package returns the data, or not, and wraps rasters when asked", {
+  local_mocked_bindings(get_landuse_raster = function(...) list(stack = raster()), .package = "rNDC")
+  ov <- overview_row("Land Use", year = 2024L)
+  calls <- list()
+  progress <- function(detail = NULL, value = NULL) calls[[length(calls) + 1]] <<- list(detail = detail, value = value)
+
+  res <- retrieve_and_package(ov, save_files = FALSE, ndc_token = "t", adc_token = "t", progress = progress)
+  expect_s4_class(res$datasets$`Land Use_1`, "SpatRaster")
+  expect_true(res$produced_any)
+  expect_equal(res$messages, "Retrieved: Land Use raster for year 2024")
+  expect_equal(calls[[1]], list(detail = "Land Use (Own polygon)", value = 0))
+  expect_equal(calls[[length(calls)]], list(detail = NULL, value = 1))
+
+  packed <- retrieve_and_package(ov, save_files = FALSE, ndc_token = "t", adc_token = "t", pack = TRUE)
+  expect_s4_class(packed$datasets$`Land Use_1`, "PackedSpatRaster")
+
+  none <- retrieve_and_package(ov, save_files = FALSE, ndc_token = "t", adc_token = "t", return_data = FALSE)
+  expect_length(none$datasets, 0)
+  expect_true(none$produced_any)
+})
+
+test_that("retrieve_and_package zips, and leaves nothing behind", {
+  local_mocked_bindings(get_landuse_raster = function(...) list(stack = raster()), .package = "rNDC")
+  before <- list.files(tempdir(), "^ndc_export_")
+  zip <- withr::local_tempfile(fileext = ".zip")
+
+  res <- retrieve_and_package(overview_row("Land Use", year = 2024L), zipfile = zip, ndc_token = "t", adc_token = "t")
+  expect_true(file.exists(zip))
+  expect_null(res$out_dir)
+  expect_equal(res$zipfile, zip)
+  expect_identical(list.files(tempdir(), "^ndc_export_"), before)
+})
+
 # ---- the app, with a background process ----
 
 land_use_overview <- function() overview_row("Land Use", year = 2024L)
 
-test_that("a download is built in the background while the app stays responsive", {
-  local_async()
+# a job manager that runs each job the moment it starts (in this process, so that the mocks of the test apply)
+inline_jobs <- function(...) fake_manager(run = TRUE, ...)
+
+test_that("a download is built in the background", {
+  fake <- inline_jobs()
+  local_jobs(fake$manager)
   rec <- new.env()
-  rec$marker <- withr::local_tempfile()
+  rec$calls <- 0
   local_mocked_bindings(
     get_landuse_raster = function(...) {
-      cat("x\n", file = rec$marker, append = TRUE)
-      Sys.sleep(1.5)
+      rec$calls <- rec$calls + 1
       list(stack = raster())
     },
     .package = "rNDC"
@@ -196,27 +384,51 @@ test_that("a download is built in the background while the app stays responsive"
 
   with_server({
     overview(land_use_overview())
-    started <- Sys.time()
     session$setInputs(check_and_download = 1)
-    expect_lt(as.numeric(difftime(Sys.time(), started, units = "secs")), 1)  # the click came back at once
-    expect_true(retrieving())
-    expect_null(prepared_zip())
-
-    # a second click while it runs does not start another retrieval
-    session$setInputs(check_and_download = 2)
-
-    wait_for(function() !retrieving())
-    expect_gte(as.numeric(difftime(Sys.time(), started, units = "secs")), 1.5)
+    settle(session, function() !retrieving())
+    expect_null(job_id())
+    expect_length(fake$rec$started, 1)
     expect_true(file.exists(prepared_zip()))
     expect_setequal(utils::unzip(prepared_zip(), list = TRUE)$Name,
                     c("land_use_geodata_own_polygon.tif", "own_polygon.gpkg", "download_summary.csv"))
-    expect_equal(length(readLines(rec$marker)), 1)  # once
+    expect_equal(rec$calls, 1)
     expect_equal(download_msgs(), "Retrieved: Land Use raster for year 2024")
+    expect_length(fake$manager$jobs, 0)  # the job is forgotten
+  })
+})
+
+test_that("while a retrieval runs the page offers to cancel it, and a second click starts nothing", {
+  fake <- fake_manager(workers = 1)
+  local_jobs(fake$manager)
+  rec <- new.env()
+  rec$notes <- character(0)
+  local_mocked_bindings(showNotification = function(ui, ...) rec$notes <- c(rec$notes, ui))
+
+  with_server({
+    overview(land_use_overview())
+    expect_false(grepl("Cancel retrieval", as.character(output$download_ui$html)))
+    session$setInputs(check_and_download = 1)
+    expect_true(retrieving())
+    expect_false(is.null(job_id()))
+    expect_null(prepared_zip())
+    expect_match(as.character(output$download_ui$html), "Cancel retrieval")
+
+    session$setInputs(check_and_download = 2)
+    expect_length(fake$rec$started, 1)
+    expect_true(any(grepl("already running", rec$notes)))
+
+    # it ends: the progress follows the process and the result is taken
+    progress_writer(fake$manager$jobs[[job_id()]]$progress_file)(detail = "Land Use", value = 0.4)
+    session$elapse(500)
+    expect_true(retrieving())
+    finish_fake_job(fake, job_id(), value = list(datasets = list(), messages = "m", produced_any = FALSE))
+    settle(session, function() !retrieving())
+    expect_equal(download_msgs(), c("No data is available within your selection. Please try a different area, time period, or dataset.", "m"))
   })
 })
 
 test_that("'Return data to R' gets the data from the background, rasters included", {
-  local_async()
+  local_jobs(inline_jobs()$manager)
   rec <- new.env()
   local_mocked_bindings(get_landuse_raster = function(...) list(stack = raster()), .package = "rNDC")
   local_mocked_bindings(return_data_to_r = function(res) rec$res <- res)
@@ -224,7 +436,7 @@ test_that("'Return data to R' gets the data from the background, rasters include
   with_server({
     overview(land_use_overview())
     session$setInputs(return_to_r = 1)
-    wait_for(function() !is.null(rec$res))
+    settle(session, function() !is.null(rec$res))
     expect_s4_class(rec$res$datasets$`Land Use_1`, "SpatRaster")
     expect_equal(terra::values(rec$res$datasets$`Land Use_1`)[, 1], 1:4)
     expect_true(rec$res$produced_any)
@@ -233,51 +445,147 @@ test_that("'Return data to R' gets the data from the background, rasters include
 })
 
 test_that("a retrieval that fails in the background is reported and the session can retrieve again", {
-  local_async()
+  local_jobs(inline_jobs()$manager)
   local_mocked_bindings(retrieve_row = function(...) stop("worker boom", call. = FALSE))
+  rec <- new.env()
+  rec$notes <- character(0)
+  local_mocked_bindings(showNotification = function(ui, ...) rec$notes <- c(rec$notes, ui))
 
-  messages <- testthat::capture_messages(
-    with_server({
-      overview(land_use_overview())
-      session$setInputs(check_and_download = 1)
-      expect_true(retrieving())
-      wait_for(function() !retrieving())
-      expect_null(prepared_zip())
-      later::run_now(0.5)  # let a late error of a callback show up
-    })
-  )
-  expect_false(any(grepl("Unhandled promise error|Unexpected error", messages)), info = paste(messages, collapse = "; "))
+  with_server({
+    overview(land_use_overview())
+    session$setInputs(check_and_download = 1)
+    settle(session, function() !retrieving())
+    expect_null(prepared_zip())
+    expect_null(job_id())
+  })
+  expect_true(any(grepl("The retrieval failed: worker boom", rec$notes)))
 })
 
-test_that("a download that finishes after the user has left does not leave a zip behind", {
-  local_async()
+test_that("the user can cancel a retrieval that runs", {
+  fake <- fake_manager(workers = 1)
+  local_jobs(fake$manager)
   rec <- new.env()
-  rec$done <- withr::local_tempfile()  # the job writes here when it has retrieved
-  local_mocked_bindings(
-    get_landuse_raster = function(...) {
-      Sys.sleep(0.5)
-      writeLines("done", rec$done)
-      list(stack = raster())
-    },
-    .package = "rNDC"
-  )
+  rec$notes <- character(0)
+  local_mocked_bindings(showNotification = function(ui, ...) rec$notes <- c(rec$notes, ui))
   zips <- function() list.files(tempdir(), "\\.zip$")
   before <- zips()
 
-  messages <- testthat::capture_messages(
-    with_server({
-      overview(land_use_overview())
-      session$setInputs(check_and_download = 1)
-      expect_true(retrieving())
-      session$close()
-      # the reactive values of a closed session cannot be read: wait for the job through its file, and
-      # give the callback (which removes the zip) time to run
-      wait_for(function() file.exists(rec$done))
-      for (i in 1:20) later::run_now(0.1)
-    })
-  )
-  expect_false(any(grepl("Unhandled promise error|Unexpected error", messages)), info = paste(messages, collapse = "; "))
+  with_server({
+    overview(land_use_overview())
+    session$setInputs(check_and_download = 1)
+    id <- job_id()
+    expect_equal(job_status(fake$manager, id)$state, "running")
+    expect_match(as.character(output$download_ui$html), "Cancel retrieval")
+
+    session$setInputs(cancel_retrieval = 1)
+    settle(session, function() !retrieving())
+    expect_equal(fake$rec$killed, id)
+    expect_null(job_id())
+    expect_null(prepared_zip())
+    expect_match(as.character(output$download_ui$html), "Download dataset")
+    expect_false(grepl("Cancel retrieval", as.character(output$download_ui$html)))
+
+    # and a new retrieval can be started
+    session$setInputs(check_and_download = 2)
+    expect_false(is.null(job_id()))
+    expect_equal(length(fake$rec$started), 2)
+  })
+  expect_true(any(grepl("cancelled", rec$notes)))
   expect_identical(zips(), before)
+})
+
+test_that("a retrieval waits in the queue while the workers are busy, and cancelling it needs no kill", {
+  fake <- fake_manager(workers = 1)
+  local_jobs(fake$manager)
+  busy <- job_submit(fake$manager, "f", list())  # someone else's job occupies the only worker
+
+  with_server({
+    overview(land_use_overview())
+    session$setInputs(check_and_download = 1)
+    id <- job_id()
+    st <- job_status(fake$manager, id)
+    expect_equal(st$state, "queued")
+    expect_equal(c(st$position, st$queued), c(1, 1))
+    expect_true(retrieving())
+
+    # the other job ends: this one starts
+    finish_fake_job(fake, busy, value = NULL)
+    settle(session, function() identical(job_status(fake$manager, id)$state, "running"))
+    expect_equal(fake$rec$started, c(busy, id))
+
+    # one more user queues, the first one gives up before its turn
+    session$setInputs(cancel_retrieval = 1)
+    settle(session, function() !retrieving())
+    expect_equal(fake$rec$killed, id)
+  })
+})
+
+test_that("a waiting retrieval is cancelled without a process to kill", {
+  fake <- fake_manager(workers = 1)
+  local_jobs(fake$manager)
+  busy <- job_submit(fake$manager, "f", list())
+
+  with_server({
+    overview(land_use_overview())
+    session$setInputs(check_and_download = 1)
+    expect_equal(job_status(fake$manager, job_id())$state, "queued")
+    session$setInputs(cancel_retrieval = 1)
+    settle(session, function() !retrieving())
+    expect_length(fake$rec$killed, 0)
+    expect_equal(fake$rec$started, busy)
+  })
+})
+
+test_that("a full queue refuses the retrieval with a message", {
+  fake <- fake_manager(workers = 1, max_queue = 0)
+  local_jobs(fake$manager)
+  job_submit(fake$manager, "f", list())
+  rec <- new.env()
+  rec$notes <- character(0)
+  local_mocked_bindings(showNotification = function(ui, ...) rec$notes <- c(rec$notes, ui))
+
+  with_server({
+    overview(land_use_overview())
+    session$setInputs(check_and_download = 1)
+    expect_false(retrieving())
+    expect_null(job_id())
+  })
+  expect_true(any(grepl("server is busy", rec$notes)))
+})
+
+test_that("a retrieval that runs when the user leaves is cancelled, and nothing is left behind", {
+  fake <- fake_manager(workers = 1)
+  local_jobs(fake$manager)
+  zips <- function() list.files(tempdir(), "\\.zip$")
+  before <- zips()
+
+  with_server({
+    overview(land_use_overview())
+    session$setInputs(check_and_download = 1)
+    id <- job_id()
+    session$close()
+    expect_equal(fake$rec$killed, id)
+  })
+  expect_length(fake$manager$jobs, 0)
+  expect_identical(zips(), before)
+})
+
+test_that("a download that finished when the user leaves does not leave a zip behind", {
+  fake <- fake_manager(workers = 1)
+  local_jobs(fake$manager)
+
+  with_server({
+    overview(land_use_overview())
+    session$setInputs(check_and_download = 1)
+    id <- job_id()
+    zip <- fake$manager$jobs[[id]]$args$zipfile
+    writeLines("zip", zip)  # what the job made
+    finish_fake_job(fake, id, value = list(datasets = list(), messages = character(0), produced_any = TRUE))
+    session$close()  # before the page has looked at the job
+    expect_false(file.exists(zip))
+  })
+  expect_length(fake$manager$jobs, 0)
+  expect_length(fake$rec$killed, 0)  # nothing to stop
 })
 
 test_that("without the background mode a download is built at once, as before", {
@@ -288,6 +596,7 @@ test_that("without the background mode a download is built at once, as before", 
     overview(land_use_overview())
     session$setInputs(check_and_download = 1)
     expect_false(retrieving())
+    expect_null(job_id())
     expect_true(file.exists(prepared_zip()))  # no waiting
   })
 })

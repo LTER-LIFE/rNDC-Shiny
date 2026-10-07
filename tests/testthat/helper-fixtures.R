@@ -150,23 +150,61 @@ local_clean_cache <- function(env = parent.frame()) {
   withr::defer(clear(), envir = env)
 }
 
-# ---- background retrieval (R/async.R) ----
+# ---- background retrieval (R/async.R, R/jobs.R) ----
 
-# Run later's event loop, which resolves promises, until `condition()` holds
-wait_for <- function(condition, timeout = 60) {
+# A job manager without processes, for tests. `rec` records what happened: `$started` (the ids of the jobs that
+# were started), `$killed`, and `$finished`: set `rec$finished[[id]] <- TRUE` to end a job. With `run = TRUE` a job
+# runs (in the test's own process, so that mocks apply) the moment it is started and is over at once.
+fake_manager <- function(workers = 1, max_queue = Inf, run = FALSE) {
+  rec <- new.env()
+  rec$started <- character(0)
+  rec$killed <- character(0)
+  rec$finished <- list()
+  start <- function(job) {
+    rec$started <- c(rec$started, job$id)
+    if (run) {
+      job_worker(job$fun, job$args, job$result_file, job$progress_file)
+      rec$finished[[job$id]] <- TRUE
+    }
+    list(
+      is_alive = function() !isTRUE(rec$finished[[job$id]]),
+      kill = function() rec$killed <- c(rec$killed, job$id),
+      error = function() "stderr of the process"
+    )
+  }
+  list(manager = new_job_manager(workers, max_queue, start = start), rec = rec)
+}
+
+# End the job `id` of a fake manager, as the process would: with a value saved, or an error, or nothing
+finish_fake_job <- function(fake, id, value = NULL, error = NULL, crash = FALSE) {
+  job <- fake$manager$jobs[[id]]
+  if (!crash) {
+    saveRDS(if (is.null(error)) list(ok = TRUE, value = value) else list(ok = FALSE, error = error), job$result_file)
+  }
+  fake$rec$finished[[id]] <- TRUE
+}
+
+# Let time pass in a test server (the page asks the job manager every half second) until `condition()` holds
+settle <- function(session, condition, tries = 60) {
+  for (i in seq_len(tries)) {
+    if (isTRUE(condition())) return(invisible(TRUE))
+    session$elapse(500)
+  }
+  stop("timed out waiting")
+}
+
+# Wait for `condition()` in real time (for processes)
+wait_for <- function(condition, timeout = 90) {
   start <- Sys.time()
   while (!isTRUE(condition())) {
-    later::run_now(0.05)
+    Sys.sleep(0.1)
     if (as.numeric(difftime(Sys.time(), start, units = "secs")) > timeout) stop("timed out waiting")
   }
   invisible(TRUE)
 }
 
-# Retrieve in background processes for the rest of the test. They are forked, so that they have the package
-# as it is loaded for the tests (and the HTTP stubs and mocks of the test).
-local_async <- function(workers = 2, env = parent.frame()) {
-  testthat::skip_if_not(future::supportsMulticore(), "forked processes are not supported here")
-  old <- future::plan(future::multicore, workers = workers)
-  withr::defer(future::plan(old), envir = env)
+# Use `manager` as the job manager of the app, and retrieve in the background, for the rest of the test.
+local_jobs <- function(manager, env = parent.frame()) {
   withr::local_options(rNDC.Shiny.async = TRUE, .local_envir = env)
+  testthat::local_mocked_bindings(ndc_jobs = function() manager, .env = env)
 }
