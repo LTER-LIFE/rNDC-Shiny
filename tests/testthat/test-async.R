@@ -252,10 +252,11 @@ test_that("a retrieval that fails in the background is reported and the session 
 test_that("a download that finishes after the user has left does not leave a zip behind", {
   local_async()
   rec <- new.env()
-  rec$done <- withr::local_tempfile()
+  rec$done <- withr::local_tempfile()  # the job writes here when it has retrieved
   local_mocked_bindings(
     get_landuse_raster = function(...) {
       Sys.sleep(0.5)
+      writeLines("done", rec$done)
       list(stack = raster())
     },
     .package = "rNDC"
@@ -269,9 +270,10 @@ test_that("a download that finishes after the user has left does not leave a zip
       session$setInputs(check_and_download = 1)
       expect_true(retrieving())
       session$close()
-      wait_for(function() !retrieving())
-      expect_null(prepared_zip())
-      later::run_now(0.5)
+      # the reactive values of a closed session cannot be read: wait for the job through its file, and
+      # give the callback (which removes the zip) time to run
+      wait_for(function() file.exists(rec$done))
+      for (i in 1:20) later::run_now(0.1)
     })
   )
   expect_false(any(grepl("Unhandled promise error|Unexpected error", messages)), info = paste(messages, collapse = "; "))

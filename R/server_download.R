@@ -28,8 +28,11 @@ server_download <- function(input, output, session, state, helpers) {
 
   # Run a retrieval and hand its result to `on_done`. In the app's own process the result is there at once; in
   # the asynchronous mode (see R/async.R) the retrieval runs in a background process, the app stays free for
-  # everyone, and `on_done` is called when it is finished. A session retrieves one overview at a time.
-  run_retrieval <- function(zipfile = NULL, save_files = TRUE, return_data = TRUE, on_done) {
+  # everyone, and `on_done` is called when it is finished. A session retrieves one overview at a time. If the
+  # user has left meanwhile, `on_abandoned` is called instead (to remove what was made): the reactive values of
+  # a closed session cannot be used any more.
+  run_retrieval <- function(zipfile = NULL, save_files = TRUE, return_data = TRUE, on_done,
+                            on_abandoned = function(res) invisible(NULL)) {
     if (isTRUE(retrieving())) {
       showNotification("A retrieval is already running: wait until it is done.", type = "warning")
       return(invisible(NULL))
@@ -47,7 +50,7 @@ server_download <- function(input, output, session, state, helpers) {
     progress <- async_progress(session, progress_file)
     finish <- function() {
       progress$close()
-      retrieving(FALSE)
+      if (!session$isClosed()) retrieving(FALSE)
     }
 
     # everything the job needs is passed to it: it has no access to the session
@@ -65,12 +68,14 @@ server_download <- function(input, output, session, state, helpers) {
       ),
       onFulfilled = function(res) {
         finish()
+        if (session$isClosed()) return(on_abandoned(res))
         res$datasets <- lapply(res$datasets, unpack_result)
         download_msgs(res$messages)
         on_done(res)
       },
       onRejected = function(e) {
         finish()
+        if (session$isClosed()) return(invisible(NULL))
         # the session is passed explicitly: in a callback there may be no default one
         showNotification(paste0("The retrieval failed: ", conditionMessage(e)), type = "error", duration = 15,
                          session = session)
@@ -105,11 +110,9 @@ server_download <- function(input, output, session, state, helpers) {
   # If it does, remember the built zip and trigger the hidden download button.
   observeEvent(input$check_and_download, {
     tmp_zip <- tempfile(fileext = ".zip")
-    run_retrieval(zipfile = tmp_zip, save_files = TRUE, return_data = FALSE, on_done = function(res) {
-      if (session$isClosed()) {  # the user left while the retrieval was running
-        unlink(tmp_zip)
-        return(invisible(NULL))
-      }
+    run_retrieval(zipfile = tmp_zip, save_files = TRUE, return_data = FALSE,
+                  on_abandoned = function(res) unlink(tmp_zip),  # the user left while it was running
+                  on_done = function(res) {
       produced <- isTRUE(res$produced_any)
       if (!produced || !file.exists(tmp_zip)) {
         prepared_zip(NULL)
