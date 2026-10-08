@@ -24,7 +24,7 @@ RUN apt-get update && apt-get install -y \
 #    release use the tag of the rNDC release instead (e.g. `v0.5.0`). The reference can be overridden at build time
 #    (`docker build --build-arg RNDC_REF=main .`). Its own dependencies are installed with it.
 #    (The default CRAN repository of the rocker images provides binary packages.)
-ARG RNDC_REF=51162eb325191cbb3ba10035ba08120a7bd976ab
+ARG RNDC_REF=c0afe00a4bb267b53c3cb3b208c609ec732d4bfd
 RUN --mount=type=secret,id=github_pat,required=false <<INSTALL
 set -e
 if [ -s /run/secrets/github_pat ]; then export GITHUB_PAT="$(cat /run/secrets/github_pat)"; fi

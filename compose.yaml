@@ -4,7 +4,7 @@ services:
       context: .
       args:
         # rNDC branch or tag to install (see the Dockerfile)
-        RNDC_REF: ${RNDC_REF:-51162eb325191cbb3ba10035ba08120a7bd976ab}
+        RNDC_REF: ${RNDC_REF:-c0afe00a4bb267b53c3cb3b208c609ec732d4bfd}
     env_file: .env
     ports:
       - "3838:3838"
