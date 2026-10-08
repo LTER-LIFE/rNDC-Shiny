@@ -163,7 +163,7 @@ fake_manager <- function(workers = 1, max_queue = Inf, run = FALSE) {
   start <- function(job) {
     rec$started <- c(rec$started, job$id)
     if (run) {
-      job_worker(job$fun, job$args, job$result_file, job$progress_file)
+      job_worker(job$fun, job$args, job$result_file, job$progress_file, job$status_file)
       rec$finished[[job$id]] <- TRUE
     }
     list(
@@ -179,7 +179,8 @@ fake_manager <- function(workers = 1, max_queue = Inf, run = FALSE) {
 finish_fake_job <- function(fake, id, value = NULL, error = NULL, crash = FALSE) {
   job <- fake$manager$jobs[[id]]
   if (!crash) {
-    saveRDS(if (is.null(error)) list(ok = TRUE, value = value) else list(ok = FALSE, error = error), job$result_file)
+    save_job_outcome(if (is.null(error)) list(ok = TRUE, value = value) else list(ok = FALSE, error = error),
+                     job$result_file, job$status_file)
   }
   fake$rec$finished[[id]] <- TRUE
 }

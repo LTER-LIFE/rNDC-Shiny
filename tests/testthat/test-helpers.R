@@ -130,6 +130,21 @@ test_that("the cache returns values until they expire", {
   expect_null(cache_get("k"))
 })
 
+test_that("the cache drops expired entries and keeps at most the maximum number, oldest first", {
+  local_clean_cache()
+  local_mocked_bindings(ndc_cache_max_entries = 3L)
+  for (k in c("a", "b", "c", "d")) {
+    cache_set(k, k)
+    Sys.sleep(0.01)  # distinct times
+  }
+  expect_setequal(ls(ndc_cache), c("b", "c", "d"))  # "a" was the oldest
+
+  # expired entries go when something is added, also when the maximum is not reached
+  local_mocked_bindings(ndc_cache_ttl = -1)
+  cache_set("e", "e")
+  expect_length(ls(ndc_cache), 0)
+})
+
 test_that("next_layer_id is one more than the largest id of the layers, whatever is missing", {
   a <- sf::st_sf(layer_id = c(1L, 4L), geometry = sf::st_sfc(sf::st_point(c(0, 0)), sf::st_point(c(1, 1)), crs = 4326))
   b <- sf::st_sf(layer_id = 7L, geometry = sf::st_sfc(sf::st_point(c(0, 0)), crs = 4326))

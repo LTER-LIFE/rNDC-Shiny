@@ -270,6 +270,30 @@ test_that("a job runs in a fresh process with the installed package", {
   expect_true(any(grepl("JOB OK", out, fixed = TRUE)), info = paste(out, collapse = "\n"))
 })
 
+test_that("the manager reads the small status file, and the result only when it is collected", {
+  fake <- fake_manager(workers = 1)
+  m <- fake$manager
+  id <- job_submit(m, "f", list())
+  finish_fake_job(fake, id, value = "big")
+
+  # a result that cannot be read does not show in the status ...
+  writeBin(as.raw(1:10), m$jobs[[id]]$result_file)
+  job_tick(m)
+  expect_equal(job_status(m, id)$state, "done")
+
+  # ... but is reported when it is collected
+  out <- job_collect(m, id)
+  expect_equal(out$state, "failed")
+  expect_match(out$error, "could not be read")
+
+  # an error of the job is in the status
+  id2 <- job_submit(m, "f", list())
+  finish_fake_job(fake, id2, error = "boom")
+  job_tick(m)
+  expect_equal(job_status(m, id2)$state, "failed")
+  expect_equal(job_status(m, id2)$error, "boom")
+})
+
 # ---- terra objects between processes ----
 
 test_that("rasters and vectors survive being sent to another process when they are packed", {
