@@ -24,7 +24,7 @@ jobs:
         with:
           use-public-rspm: true
 
-      # `Remotes:` in DESCRIPTION (rNDC and leaflet.extras from GitHub) are installed too
+      # `Remotes:` in DESCRIPTION (rNDC from GitHub) are installed too
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
           extra-packages: any::rcmdcheck

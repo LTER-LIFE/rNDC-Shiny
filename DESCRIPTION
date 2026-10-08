@@ -22,6 +22,6 @@ Description: A Shiny app that gives a graphical user interface to find and get d
 License: Apache License (>= 2)
 Imports: shiny, htmltools, callr, parallel, shinyjs, leaflet, leaflet.extras, sf, terra, dplyr, tibble, geojsonsf, jsonlite, lubridate, zip, magrittr, stats, tools, utils, rNDC (>= 0.5)
 Suggests: pkgload, testthat (>= 3.2.0), webmockr, withr
-Remotes: LTER-LIFE/rNDC@texel26, bhaskarvk/leaflet.extras
+Remotes: LTER-LIFE/rNDC@texel26
 RoxygenNote: 7.3.3
 Config/testthat/edition: 3

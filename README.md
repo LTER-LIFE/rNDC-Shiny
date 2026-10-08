@@ -114,9 +114,9 @@ podman compose up --build
 
 The app will be available at `http://localhost:3838/`.
 
-By default the image installs `rNDC` from its `texel26` branch. To use another branch or tag, set `RNDC_REF` (e.g. `RNDC_REF=main docker compose up --build`).
+The image is reproducible: its base is `rocker/shiny` at a fixed R version and digest, and it installs `rNDC` at a fixed commit (`RNDC_REF` in the `Dockerfile` and `compose.yaml`; for a release, the tag of the rNDC release). To use another commit, branch or tag, set `RNDC_REF` (e.g. `RNDC_REF=main docker compose up --build`). When a new rNDC version is needed, change the default of `RNDC_REF` in both files.
 
-The build downloads `rNDC` and `leaflet.extras` from GitHub, which limits anonymous requests; if the build fails because of that, pass a GitHub token as a build secret (it is not kept in the image): `GITHUB_PAT=<token> docker build --secret id=github_pat,env=GITHUB_PAT -t rndc-shiny .`.
+The build downloads `rNDC` from GitHub, which limits anonymous requests; if the build fails because of that, pass a GitHub token as a build secret (it is not kept in the image): `GITHUB_PAT=<token> docker build --secret id=github_pat,env=GITHUB_PAT -t rndc-shiny .`.
 
 ## Development
 

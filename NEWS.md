@@ -18,6 +18,10 @@
 * Requires rNDC 0.5 or later: the helpers that this package had written for itself (all pages of a STAC search, all pages of an AgroDataCube request, the monthly NDVI statistics, the years of the rasters, and the defaults of the rasters, which were taken from rNDC's internals) are now exported by rNDC.
 * The Docker build checks each step (a missing package fails the build), can use a GitHub token against rate limits (`docker build --secret id=github_pat,env=GITHUB_PAT .`), and the `docker-build` workflow also starts the container and checks that it answers. `aidecl.yaml` declares the use of AI tools.
 
+## Changes
+
+* The Docker build is reproducible: the base image is `rocker/shiny` at a fixed R version and digest (it was `latest`), and `rNDC` is installed at a fixed commit (`RNDC_REF`; it was the branch `texel26`). `leaflet.extras` comes from CRAN (2.1.0 or later) and is no longer a `Remotes:` entry. At a release, `RNDC_REF` is the tag of the rNDC release.
+
 ## Fixes
 
 * NDVI rasters are retrieved for the month(s) of their row in the overview, not for what the input widgets happen to say when downloading.
