@@ -22,6 +22,9 @@
 
 * The Docker build is reproducible: the base image is `rocker/shiny` at a fixed R version and digest (it was `latest`), and `rNDC` is installed at a fixed commit (`RNDC_REF`; it was the branch `texel26`). `leaflet.extras` comes from CRAN (2.1.0 or later) and is no longer a `Remotes:` entry. At a release, `RNDC_REF` is the tag of the rNDC release.
 
+* A background retrieval gets the API tokens in the environment of its process, not in the arguments of the job (which `callr` saves to a file).
+* The check for data in the selected area counts what is not cached in one call of `rNDC::ndc_datasets(collections = )` (one collection at a time if that fails), uses `rNDC::stac_year_trange()` for the year, and passes the session's token to rNDC (it used the default of rNDC). This needs the rNDC with the `collections` argument of `ndc_datasets()`; an older rNDC works, with one request per collection.
+
 ## Fixes
 
 * NDVI rasters are retrieved for the month(s) of their row in the overview, not for what the input widgets happen to say when downloading.

@@ -36,23 +36,43 @@ cache_set <- function(key, value) {
 
 # Number of STAC items of `collection` that intersect `roi` (an sf/sfc object), optionally within `trange`,
 # via rNDC::ndc_count(). NA if the request fails. Cached per collection, area and time range.
-count_items <- function(collection, roi, trange = NULL) {
+count_items <- function(collection, roi, trange = NULL, token = Sys.getenv("NDC_TOKEN")) {
   key <- paste("count", collection, trange, sf::st_as_text(sf::st_geometry(roi))[1], sep = "|")
   n <- cache_get(key)
   if (!is.null(n)) return(n)
 
-  n <- tryCatch(as.numeric(rNDC::ndc_count(collection = collection, roi = roi, trange = trange)),
+  n <- tryCatch(as.numeric(rNDC::ndc_count(collection = collection, roi = roi, trange = trange, token = token)),
                 error = function(e) NA_real_)
   if (length(n) != 1 || is.na(n)) return(NA_real_)
   cache_set(key, n)
 }
 
-# The counts of `count_items()` for several collections (named by collection), for one year if given
-items_in_area <- function(collections, roi, year = NULL) {
-  trange <- if (!is.null(year) && nzchar(as.character(year))) {
-    paste0(year, "-01-01T00:00:00Z/", year, "-12-31T23:59:59Z")
+# The counts of `count_items()` for several collections (named by collection), for one year if given. What is not
+# in the cache is asked in one call of rNDC::ndc_datasets(); if that fails, one collection at a time, so that the
+# collections that can be counted are.
+items_in_area <- function(collections, roi, year = NULL, token = Sys.getenv("NDC_TOKEN")) {
+  trange <- rNDC::stac_year_trange(year)
+  if (!is.null(trange)) trange <- rNDC::ndc_trange(trange)
+  area <- sf::st_as_text(sf::st_geometry(roi))[1]
+  key <- function(collection) paste("count", collection, trange, area, sep = "|")
+
+  counts <- vapply(collections, function(collection) {
+    n <- cache_get(key(collection))
+    if (is.null(n)) NA_real_ else n
+  }, numeric(1))
+  todo <- collections[is.na(counts)]
+  if (length(todo) > 0) {
+    fresh <- tryCatch(rNDC::ndc_datasets(roi = roi, trange = trange, token = token, matched = TRUE,
+                                         collections = todo)$n_matched,
+                      error = function(e) NULL)
+    if (length(fresh) == length(todo) && !anyNA(fresh)) {
+      for (i in seq_along(todo)) cache_set(key(todo[i]), as.numeric(fresh[i]))
+      counts[todo] <- as.numeric(fresh)
+    } else {
+      counts[todo] <- vapply(todo, function(collection) count_items(collection, roi, trange, token), numeric(1))
+    }
   }
-  vapply(collections, function(collection) count_items(collection, roi, trange), numeric(1))
+  counts
 }
 
 # Years for which rasters exist: read from the STAC items (via rNDC), cached, falling back to the known years
@@ -67,10 +87,10 @@ get_raster_years <- function(key, fetch, fallback) {
   years
 }
 
-get_nitrogen_years <- function() {
-  get_raster_years("nitrogen_years", function() rNDC::ndc_nitrogen_years(), c("2024", "2025", "2040"))
+get_nitrogen_years <- function(token = Sys.getenv("NDC_TOKEN")) {
+  get_raster_years("nitrogen_years", function() rNDC::ndc_nitrogen_years(token), c("2024", "2025", "2040"))
 }
 
-get_landuse_years <- function() {
-  get_raster_years("landuse_years", function() rNDC::ndc_landuse_years(), as.character(landuse_default_year))
+get_landuse_years <- function(token = Sys.getenv("NDC_TOKEN")) {
+  get_raster_years("landuse_years", function() rNDC::ndc_landuse_years(token), as.character(landuse_default_year))
 }

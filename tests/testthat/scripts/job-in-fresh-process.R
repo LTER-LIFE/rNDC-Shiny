@@ -11,8 +11,8 @@ ov <- tibble::tibble(dataset = "Vegetation structure", view = "Geodata", year = 
                      wkt = sf::st_as_text(sf::st_geometry(poly)), polygon_sf = list(poly),
                      date_from = as.Date(NA), date_to = as.Date(NA))
 id <- ns$job_submit(m, "retrieve_and_package",
-                    list(ov = ov, zipfile = NULL, save_files = FALSE, workdir = NULL, ndc_token = "t",
-                         adc_token = "t", return_data = TRUE, pack = TRUE))
+                    list(ov = ov, zipfile = NULL, save_files = FALSE, workdir = NULL, return_data = TRUE, pack = TRUE),
+                    env = c(NDC_TOKEN = "t", ADC_TOKEN = "t"))
 
 t0 <- Sys.time()
 repeat {

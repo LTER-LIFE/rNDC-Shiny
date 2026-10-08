@@ -113,3 +113,50 @@ test_that("several selected polygons are asked as one area", {
     expect_equal(last_request_body()$intersects$type, "MultiPolygon")
   })
 })
+
+test_that("items_in_area asks for what is not in the cache in one call, and passes the token", {
+  local_clean_cache()
+  local_stac_api(list(list(raster_item("a", "2024-01-01"))))
+  roi <- sf::st_geometry(selected_polygon())
+
+  # one collection is cached already: only the others are asked
+  cache_set(paste("count", "ntot", "2024-01-01T00:00:00Z/2024-12-31T23:59:59Z", sf::st_as_text(roi)[1], sep = "|"), 7)
+  webmockr::request_registry_clear()
+  counts <- items_in_area(c("ntot", "nox", "nh3"), roi, year = "2024", token = "t")
+  expect_equal(counts, c(ntot = 7, nox = 1, nh3 = 1))
+  bodies <- Filter(nzchar, vapply(webmockr::request_registry()$request_signatures$hash,
+                                  function(r) if (is.null(r$sig$body)) "" else r$sig$body, character(1)))
+  asked <- vapply(bodies, function(b) unlist(jsonlite::fromJSON(b)$collections), "")
+  expect_setequal(unname(asked), c("nox", "nh3"))
+
+  # and the answers are cached
+  n_requests <- length(request_uris())
+  expect_equal(items_in_area(c("ntot", "nox", "nh3"), roi, year = "2024", token = "t"), counts)
+  expect_length(request_uris(), n_requests)
+})
+
+test_that("items_in_area counts what it can when the call for all of them fails", {
+  local_clean_cache()
+  local_stac_api(list(list(raster_item("a", "2024-01-01"))))
+  roi <- sf::st_geometry(selected_polygon())
+  calls <- 0
+  local_mocked_bindings(
+    count_items = function(collection, roi, trange = NULL, token = "") {
+      if (collection == "nox") NA_real_ else 2
+    }
+  )
+  local_mocked_bindings(ndc_datasets = function(...) stop("boom"), .package = "rNDC")
+  expect_equal(items_in_area(c("ntot", "nox"), roi, year = "2024", token = "t"), c(ntot = 2, nox = NA_real_))
+})
+
+test_that("the token is passed on to the counts and the years", {
+  local_clean_cache()
+  seen <- character()
+  local_mocked_bindings(ndc_count = function(..., token) { seen <<- c(seen, token); 1 }, .package = "rNDC")
+  expect_equal(count_items("lgn", sf::st_geometry(selected_polygon()), token = "mine"), 1)
+  expect_equal(seen, "mine")
+
+  local_mocked_bindings(ndc_landuse_years = function(token) { seen <<- c(seen, token); "2024" }, .package = "rNDC")
+  expect_equal(get_landuse_years("mine2"), "2024")
+  expect_equal(seen, c("mine", "mine2"))
+})

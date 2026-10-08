@@ -160,10 +160,12 @@ fake_manager <- function(workers = 1, max_queue = Inf, run = FALSE) {
   rec$started <- character(0)
   rec$killed <- character(0)
   rec$finished <- list()
+  rec$jobs <- list()  # what each job was started with
   start <- function(job) {
     rec$started <- c(rec$started, job$id)
+    rec$jobs[[job$id]] <- job[c("fun", "args", "env")]
     if (run) {
-      job_worker(job$fun, job$args, job$result_file, job$progress_file, job$status_file)
+      withr::with_envvar(job$env, job_worker(job$fun, job$args, job$result_file, job$progress_file, job$status_file))
       rec$finished[[job$id]] <- TRUE
     }
     list(

@@ -115,7 +115,7 @@ server_dataset <- function(input, output, session, state, helpers) {
       tagList(tags$div(class = "dataset-controls", numericInput("selected_year", "Select year:", value = last_year, min = fields_min_year, max = last_year)))
 
     } else if (ds == "Nitrogen") {
-      nitrogen_years <- get_nitrogen_years()
+      nitrogen_years <- get_nitrogen_years(state$mytoken)
       tagList(tags$div(
         class = "dataset-controls",
         selectInput("nitrogen_year", "Select year:", choices = nitrogen_years,
@@ -126,7 +126,7 @@ server_dataset <- function(input, output, session, state, helpers) {
       ))
 
     } else if (ds == "Land Use") {
-      years <- get_landuse_years()
+      years <- get_landuse_years(state$mytoken)
       default <- as.character(landuse_default_year)
       tagList(tags$div(class = "dataset-controls",
                        selectInput("landuse_year", "Select year:", choices = years,
@@ -344,7 +344,7 @@ server_dataset <- function(input, output, session, state, helpers) {
 
     year <- switch(ds, "Land Use" = input$landuse_year, "Nitrogen" = input$nitrogen_year)
     list(dataset = ds, year = year,
-         counts = items_in_area(collections, sf::st_union(sf::st_geometry(sel)), year))
+         counts = items_in_area(collections, sf::st_union(sf::st_geometry(sel)), year, state$mytoken))
   }) %>% debounce(400)
 
   output$availability <- renderUI({

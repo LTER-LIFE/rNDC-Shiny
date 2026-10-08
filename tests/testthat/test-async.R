@@ -217,14 +217,26 @@ test_that("a job runs in a new R process, reports its progress and returns its v
                        wkt = sf::st_as_text(sf::st_geometry(poly)), polygon_sf = list(poly),
                        date_from = as.Date(NA), date_to = as.Date(NA))
   id <- job_submit(m, "retrieve_and_package",
-                   list(ov = ov, zipfile = NULL, save_files = FALSE, workdir = NULL, ndc_token = "t",
-                        adc_token = "t", return_data = TRUE, pack = TRUE))
+                   list(ov = ov, zipfile = NULL, save_files = FALSE, workdir = NULL, return_data = TRUE, pack = TRUE),
+                   env = c(NDC_TOKEN = "t", ADC_TOKEN = "t"))
   wait_for_job(m, id)
   expect_equal(job_status(m, id)$state, "done", info = job_status(m, id)$error)
   expect_equal(read_progress(m$jobs[[id]]$progress_file)$value, 1)
   out <- job_collect(m, id)
   expect_equal(out$value$messages, "Skipped: Vegetation structure is not wired to a retrieval endpoint yet.")
   expect_false(out$value$produced_any)
+})
+
+test_that("a process gets the environment variables of its job", {
+  m <- real_manager()
+  on.exit(job_shutdown(m), add = TRUE)
+  # the job is the function Sys.getenv(): what the process sees of the environment. (NDC_TOKEN and ADC_TOKEN
+  # themselves are not used here: a ~/.Renviron that defines them takes precedence in a new R process.)
+  id <- job_submit(m, "Sys.getenv", list(x = c("NDC_TEST_SECRET", "ADC_TEST_SECRET")),
+                   env = c(NDC_TEST_SECRET = "secret-ndc", ADC_TEST_SECRET = "secret-adc"))
+  wait_for_job(m, id)
+  expect_equal(job_status(m, id)$state, "done", info = job_status(m, id)$error)
+  expect_equal(unname(job_collect(m, id)$value), c("secret-ndc", "secret-adc"))
 })
 
 test_that("an error in a process is reported with its message", {
@@ -416,6 +428,10 @@ test_that("a download is built in the background", {
     expect_setequal(utils::unzip(prepared_zip(), list = TRUE)$Name,
                     c("land_use_geodata_own_polygon.tif", "own_polygon.gpkg", "download_summary.csv"))
     expect_equal(rec$calls, 1)
+    # the tokens reach the process through its environment, not in the arguments
+    job <- fake$rec$jobs[[1]]
+    expect_equal(job$env, c(NDC_TOKEN = "t", ADC_TOKEN = "t"))
+    expect_false(any(c("ndc_token", "adc_token") %in% names(job$args)))
     expect_equal(download_msgs(), "Retrieved: Land Use raster for year 2024")
     expect_length(fake$manager$jobs, 0)  # the job is forgotten
   })

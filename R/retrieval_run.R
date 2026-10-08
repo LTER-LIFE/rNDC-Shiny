@@ -33,7 +33,8 @@ retrieve_overview <- function(ov, workdir, ndc_token, adc_token, progress = no_p
 # then removed). Returns the data (`datasets`; empty with `return_data = FALSE`), the `overview`, the
 # `messages`, the `summary` and whether any data was produced. With `pack`, rasters and vectors of terra are
 # wrapped, so that they can be sent from a background process (they are pointers otherwise).
-retrieve_and_package <- function(ov, zipfile = NULL, save_files = TRUE, workdir = NULL, ndc_token, adc_token,
+retrieve_and_package <- function(ov, zipfile = NULL, save_files = TRUE, workdir = NULL,
+                                 ndc_token = Sys.getenv("NDC_TOKEN"), adc_token = Sys.getenv("ADC_TOKEN"),
                                  progress = no_progress, return_data = TRUE, pack = FALSE) {
   if (save_files) {
     if (is.null(workdir)) {

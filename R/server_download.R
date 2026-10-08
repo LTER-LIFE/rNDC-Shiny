@@ -52,9 +52,11 @@ server_download <- function(input, output, session, state, helpers) {
     jobs <- ndc_jobs()
     id <- job_submit(
       jobs, "retrieve_and_package",
-      list(ov = ov, zipfile = zipfile, save_files = save_files, workdir = NULL, ndc_token = mytoken,
-           adc_token = agro_token, return_data = return_data, pack = TRUE),
-      files = zipfile
+      list(ov = ov, zipfile = zipfile, save_files = save_files, workdir = NULL, return_data = return_data,
+           pack = TRUE),
+      files = zipfile,
+      # the tokens go to the process through its environment, not in the arguments (which are saved to a file)
+      env = c(NDC_TOKEN = as.character(mytoken), ADC_TOKEN = as.character(agro_token))
     )
     if (is.null(id)) {
       showNotification("The server is busy: too many retrievals are waiting. Try again in a few minutes.",

@@ -42,9 +42,12 @@ jobs_in_state <- function(manager, state) {
 }
 
 # Submit a job: call the function `fun` (the name of a function of this package) with the list `args`. `files`
-# are files that the job makes elsewhere and that go when it is cancelled. Returns the id of the job, or NULL if
-# too many jobs are waiting.
-job_submit <- function(manager, fun, args, files = character(0)) {
+# are files that the job makes elsewhere and that go when it is cancelled. `env` is a named character vector of
+# environment variables for the process of the job: this is where secrets such as API tokens go, and not in `args`,
+# which callr saves to a file for the process. (A variable that a ~/.Renviron defines is overridden by it when the
+# process starts: with the same value in practice, since the app takes its tokens from the same variables.)
+# Returns the id of the job, or NULL if too many jobs are waiting.
+job_submit <- function(manager, fun, args, files = character(0), env = character(0)) {
   # a job that finds all workers busy waits, unless too many wait already
   busy <- length(jobs_in_state(manager, "running")) >= manager$max_workers
   if (busy && length(jobs_in_state(manager, "queued")) >= manager$max_queue) return(NULL)
@@ -55,7 +58,7 @@ job_submit <- function(manager, fun, args, files = character(0)) {
   dir <- tempfile("ndc_job_")
   dir.create(dir, recursive = TRUE)
   manager$jobs[[id]] <- list(
-    id = id, state = "queued", fun = fun, args = args, files = files, dir = dir,
+    id = id, state = "queued", fun = fun, args = args, files = files, env = env, dir = dir,
     result_file = file.path(dir, "result.rds"), status_file = file.path(dir, "status.rds"),
     progress_file = file.path(dir, "progress.rds"),
     submitted = Sys.time(), started = NULL, handle = NULL, error = NULL
@@ -199,7 +202,7 @@ start_job_process <- function(job) {
   process <- callr::r_bg(
     job_worker, args = list(job$fun, job$args, job$result_file, job$progress_file, job$status_file, dev_path),
     stdout = file.path(job$dir, "stdout.txt"), stderr = stderr,
-    env = c(callr::rcmd_safe_env(), TMPDIR = job$dir, TMP = job$dir, TEMP = job$dir),
+    env = c(callr::rcmd_safe_env(), job$env, TMPDIR = job$dir, TMP = job$dir, TEMP = job$dir),
     supervise = TRUE
   )
   list(
