@@ -131,6 +131,10 @@ roxygen2::roxygenise()  # regenerate NAMESPACE and man/ after changing roxygen c
 - On GitHub, [`R-CMD-check`](.github/workflows/R-CMD-check.yaml) runs on every push and pull request, [`live-checks`](.github/workflows/live-checks.yaml) runs weekly against the real APIs (it needs the `NDC_TOKEN` and `ADC_TOKEN` repository secrets), and [`docker-build`](.github/workflows/docker-build.yaml) builds the image.
 - See [CLAUDE.md](CLAUDE.md) for an overview of the code.
 
+## ToDo
+
+- Per-user tokens
+
 ## Citation
 
 See [CITATION.cff](CITATION.cff).
