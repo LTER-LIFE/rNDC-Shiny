@@ -114,7 +114,7 @@ podman compose up --build
 
 The app will be available at `http://localhost:3838/`.
 
-The image is reproducible: its base is `rocker/shiny` at a fixed R version and digest, and it installs `rNDC` at a fixed commit (`RNDC_REF` in the `Dockerfile` and `compose.yaml`; for a release, the tag of the rNDC release). To use another commit, branch or tag, set `RNDC_REF` (e.g. `RNDC_REF=main docker compose up --build`). When a new rNDC version is needed, change the default of `RNDC_REF` in both files.
+The image is reproducible: its base is `rocker/shiny` at a fixed R version and digest, and it installs `rNDC` at the tag of a release (`RNDC_REF` in the `Dockerfile` and `compose.yaml`, now `v0.5.1`). To use another tag, branch or commit, set `RNDC_REF` (e.g. `RNDC_REF=main docker compose up --build`). When a new rNDC release is needed, change the default of `RNDC_REF` in both files (and `rNDC (>= ...)` in `DESCRIPTION`).
 
 The build downloads `rNDC` from GitHub, which limits anonymous requests; if the build fails because of that, pass a GitHub token as a build secret (it is not kept in the image): `GITHUB_PAT=<token> docker build --secret id=github_pat,env=GITHUB_PAT -t rndc-shiny .`.
 

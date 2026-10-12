@@ -20,11 +20,10 @@ RUN apt-get update && apt-get install -y \
 #   docker build --secret id=github_pat,env=GITHUB_PAT .
 # `install.packages()` only warns when a package is not available, so each step ends with a check.
 
-# 1. The rNDC package, which the app is built on, at a fixed commit (a branch would change under the build). At a
-#    release use the tag of the rNDC release instead (e.g. `v0.5.0`). The reference can be overridden at build time
-#    (`docker build --build-arg RNDC_REF=main .`). Its own dependencies are installed with it.
+# 1. The rNDC package, which the app is built on, at the tag of an rNDC release (a branch would change under the
+#    build). The reference can be overridden at build time (`docker build --build-arg RNDC_REF=main .`). Its own dependencies are installed with it.
 #    (The default CRAN repository of the rocker images provides binary packages.)
-ARG RNDC_REF=c0afe00a4bb267b53c3cb3b208c609ec732d4bfd
+ARG RNDC_REF=v0.5.1
 RUN --mount=type=secret,id=github_pat,required=false <<INSTALL
 set -e
 if [ -s /run/secrets/github_pat ]; then export GITHUB_PAT="$(cat /run/secrets/github_pat)"; fi

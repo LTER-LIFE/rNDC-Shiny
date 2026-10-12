@@ -5,7 +5,7 @@ name: docker-build
 
 on:
   push:
-    branches: [main, texel26]
+    branches: [main]
     paths: [Dockerfile, .dockerignore, compose.yaml, DESCRIPTION, "R/**", "inst/**", NAMESPACE, "tests/testthat/scripts/**"]
   pull_request:
     branches: [main]

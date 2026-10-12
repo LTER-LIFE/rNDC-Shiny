@@ -1,29 +1,51 @@
-# rNDC.Shiny 0.4.0
+# rNDC.Shiny 0.5.1
 
 ## New
 
-* The repository is now an R package (`rNDC.Shiny`) that depends on [rNDC](https://github.com/LTER-LIFE/rNDC) (branch `texel26`). Launch the app with `ndc_gui()`; `ndc_app()` gives the app object (e.g. for Shiny Server).
+* Retrievals in the background (in a deployment, e.g. the Docker image) wait in a queue when all background processes are busy: the progress bar shows the position ("Position 2 of 3 in the queue"). `NDC_MAX_QUEUE` (default 20) sets how many may wait; beyond that a new retrieval is refused with a message.
+* A "Cancel retrieval" button stops a retrieval that waits or runs: its process is killed (with the processes it started) and what it made is removed. Leaving the page does the same, and so does stopping the app.
+* The progress bar uses the progress that `rNDC::ndc_with_progress()` reports (the request that starts and the total), instead of the wording of rNDC's messages.
+
+## Changes
+
+* Every background retrieval is its own R process (`callr`), started by a small job manager (`R/jobs.R`) that is shared by all sessions. This replaces the `future` workers (`future` and `promises` are no longer used); `NDC_WORKERS` still sets how many run at the same time. In a package that is only loaded with `devtools::load_all()` the processes load it from its source folder (this needs `pkgload`); forked processes are no longer used.
+* A background retrieval gets the API tokens in the environment of its process, not in the arguments of the job (which `callr` saves to a file).
+* The check for data in the selected area counts what is not cached in one call of `rNDC::ndc_datasets(collections = )` (one collection at a time if that fails), uses `rNDC::stac_year_trange()` for the year, and passes the session's token to rNDC (it used the default of rNDC). Requires rNDC 0.5.1 or later.
+* The Docker build is reproducible: the base image is `rocker/shiny` at a fixed R version and digest (it was `latest`), and `rNDC` is installed at the tag of its release (`RNDC_REF`, `v0.5.1`; it was a branch). `leaflet.extras` comes from CRAN (2.1.0 or later) and is no longer a `Remotes:` entry. A new rNDC release means a new `RNDC_REF`. `rNDC` is installed from `LTER-LIFE/rNDC` (its main branch) when the package is installed from GitHub.
+* The overview table shows its dates with the same function as the download summary.
+* The study sites of `rNDC::ndc_sites()` are the same polygons as the LTER projects, so the project menu has no separate group for them; the LTER projects have the `ndc_id` that NDVI statistics need. A live test checks that they still coincide.
+
+## Fixes
+
+* The cache of the lookups (item counts, years) has a limit of 500 entries: expired entries go first, then the oldest. It used to grow with every area that was looked at.
+* The app does not read the result of a background retrieval, which can be large, each time it looks at the job: a small status file says when it is done.
+
+## Internal
+
+* The LTER project classes are defined once (`lter_class_patterns`): they classify the features, find the NDVI collection of a polygon from its name and build the project menu.
+* Removed duplicated and unused code: the repeated clearing of the map and the sidebar when a project is chosen or polygons are drawn or uploaded, the helper for the next layer id (`next_layer_id()`), and the unused spinner of the SNL status line.
+* `R/stac_helpers.R` is now `R/lookups.R` (and its tests `test-lookups.R`).
+* Tests for the job manager (with a fake process and with real `callr` processes), the queue and the cancel button, and the cache limit. The Docker workflow runs a job in a fresh process of the image.
+
+# rNDC.Shiny 0.5.0
+
+## New
+
+* The repository is now an R package (`rNDC.Shiny`) that depends on [rNDC](https://github.com/LTER-LIFE/rNDC). Launch the app with `ndc_gui()`; `ndc_app()` gives the app object (e.g. for Shiny Server).
 * `ADC_TOKEN` is optional: without it, the datasets from AgroDataCube (Weather, Soil map, AHN and Agricultural fields) are disabled.
 * The "Return data to R (close app)" button works again (it is shown in interactive R sessions).
 * The messages panel shows what happened to each dataset (retrieved, or failed and why), also when only part of the selection could be retrieved.
 * The app shows whether the selected area has Land Use or Nitrogen data (for the selected year) before you add the dataset.
-* In a deployment (e.g. the Docker image) retrievals run in background R processes (one `callr` process per retrieval), so that a long retrieval does not hold up the other users; the progress bar follows it from the background. When all processes are busy a retrieval waits in a queue (the page shows its position), and a "Cancel retrieval" button stops a waiting or running retrieval (its process is killed and what it made removed; leaving the page does the same). `NDC_ASYNC`, `NDC_WORKERS` and `NDC_MAX_QUEUE` set this; in an interactive R session retrieval stays in the session. A session retrieves one overview at a time.
+* In a deployment (e.g. the Docker image) retrievals run in background R processes (`future` workers), so that a long retrieval does not hold up the other users; the progress bar follows it from the background. `NDC_ASYNC` and `NDC_WORKERS` set this; in an interactive R session retrieval stays in the session. A session retrieves one overview at a time.
 * Uploads can be up to 100 MB (`NDC_MAX_UPLOAD_MB`), instead of Shiny's 5 MB, and the page says so.
-* The progress bar uses the progress that `rNDC::ndc_with_progress()` reports (no longer the wording of rNDC's messages).
 * Long retrievals are estimated when a dataset is added: the app warns above about a minute and refuses above 5 minutes (`NDC_MAX_REQUEST_SECONDS` changes the limit, which is 15 minutes in the background mode), counting the whole overview. While retrieving, the progress bar and its detail show where the retrieval is (e.g. the 3rd of 10 Weather requests).
 * The Land Use year can be chosen (the years come from the NatureDataCube; only 2024 is available for now).
-* The Docker image installs the package, with `rNDC` from a configurable branch (`RNDC_REF`).
-* Offline tests (HTTP stubbed with webmockr), live tests, and the `R-CMD-check`, `live-checks` and `docker-build` GitHub Actions.
-
-* Requires rNDC 0.5 or later: the helpers that this package had written for itself (all pages of a STAC search, all pages of an AgroDataCube request, the monthly NDVI statistics, the years of the rasters, and the defaults of the rasters, which were taken from rNDC's internals) are now exported by rNDC.
-* The Docker build checks each step (a missing package fails the build), can use a GitHub token against rate limits (`docker build --secret id=github_pat,env=GITHUB_PAT .`), and the `docker-build` workflow also starts the container and checks that it answers. `aidecl.yaml` declares the use of AI tools.
+* The Docker image installs the package, with `rNDC` from a configurable branch (`RNDC_REF`). The Docker build checks each step (a missing package fails the build), can use a GitHub token against rate limits (`docker build --secret id=github_pat,env=GITHUB_PAT .`), and the `docker-build` workflow also starts the container and checks that it answers.
+* Offline tests (HTTP stubbed with webmockr), live tests, and the `R-CMD-check`, `live-checks` and `docker-build` GitHub Actions. `aidecl.yaml` declares the use of AI tools.
 
 ## Changes
 
-* The Docker build is reproducible: the base image is `rocker/shiny` at a fixed R version and digest (it was `latest`), and `rNDC` is installed at a fixed commit (`RNDC_REF`; it was the branch `texel26`). `leaflet.extras` comes from CRAN (2.1.0 or later) and is no longer a `Remotes:` entry. At a release, `RNDC_REF` is the tag of the rNDC release.
-
-* A background retrieval gets the API tokens in the environment of its process, not in the arguments of the job (which `callr` saves to a file).
-* The check for data in the selected area counts what is not cached in one call of `rNDC::ndc_datasets(collections = )` (one collection at a time if that fails), uses `rNDC::stac_year_trange()` for the year, and passes the session's token to rNDC (it used the default of rNDC). This needs the rNDC with the `collections` argument of `ndc_datasets()`; an older rNDC works, with one request per collection.
+* Requires rNDC 0.5 or later: the helpers that this package had written for itself (all pages of a STAC search, all pages of an AgroDataCube request, the monthly NDVI statistics, the years of the rasters, and the defaults of the rasters, which were taken from rNDC's internals) are now exported by rNDC.
 
 ## Fixes
 
@@ -36,6 +58,7 @@
 * Downloads are safe when several people use the app at the same time (no `setwd()`, unique export folders, temporary files are removed).
 * The date and year inputs have current limits (Weather from 1970, Agricultural fields from 2009, NDVI from May 2017: the first month with data, checked against the services), and the NDVI months are checked (valid months, start not after end, no future months, nothing before May 2017).
 * The nitrogen years are read from the NatureDataCube.
+* A retrieval that finishes after the user has left the page is cleaned up (no reactive values of a closed session are touched, and no zip is left behind).
 
 ## Internal
 

@@ -74,7 +74,7 @@ weather_min_date <- as.Date("1970-01-01")  # KNMI daily data; the closest statio
 ndvi_min_month <- as.Date("2017-05-01")    # the GroenMonitor daily NDVI starts on 2017-05-26
 fields_min_year <- 2009L                   # AgroDataCube field geometries (2008 has none)
 
-# Defaults of the rasters, taken from rNDC (>= 0.5) and evaluated on first use: the STAC collection of the
+# Defaults of the rasters, taken from rNDC (>= 0.5.1) and evaluated on first use: the STAC collection of the
 # Land Use rasters, its default year, and the nitrogen layers.
 delayedAssign("ndc_landuse_collection", rNDC::ndc_landuse_collection())
 delayedAssign("landuse_default_year", rNDC::ndc_landuse_default_year())
