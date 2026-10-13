@@ -331,6 +331,7 @@ test_that("rasters and vectors survive being sent to another process when they a
 # ---- the retrieval of a whole overview, without Shiny ----
 
 test_that("retrieve_and_package returns the data, or not, and wraps rasters when asked", {
+  local_stac_api()  # the references are read from the STAC API
   local_mocked_bindings(get_landuse_raster = function(...) list(stack = raster()), .package = "rNDC")
   ov <- overview_row("Land Use", year = 2024L)
   calls <- list()
@@ -352,41 +353,7 @@ test_that("retrieve_and_package returns the data, or not, and wraps rasters when
 })
 
 test_that("retrieve_and_package zips, and leaves nothing behind", {
-  local_mocked_bindings(get_landuse_raster = function(...) list(stack = raster()), .package = "rNDC")
-  before <- list.files(tempdir(), "^ndc_export_")
-  zip <- withr::local_tempfile(fileext = ".zip")
-
-  res <- retrieve_and_package(overview_row("Land Use", year = 2024L), zipfile = zip, ndc_token = "t", adc_token = "t")
-  expect_true(file.exists(zip))
-  expect_null(res$out_dir)
-  expect_equal(res$zipfile, zip)
-  expect_identical(list.files(tempdir(), "^ndc_export_"), before)
-})
-
-# ---- the retrieval of a whole overview, without Shiny ----
-
-test_that("retrieve_and_package returns the data, or not, and wraps rasters when asked", {
-  local_mocked_bindings(get_landuse_raster = function(...) list(stack = raster()), .package = "rNDC")
-  ov <- overview_row("Land Use", year = 2024L)
-  calls <- list()
-  progress <- function(detail = NULL, value = NULL) calls[[length(calls) + 1]] <<- list(detail = detail, value = value)
-
-  res <- retrieve_and_package(ov, save_files = FALSE, ndc_token = "t", adc_token = "t", progress = progress)
-  expect_s4_class(res$datasets$`Land Use_1`, "SpatRaster")
-  expect_true(res$produced_any)
-  expect_equal(res$messages, "Retrieved: Land Use raster for year 2024")
-  expect_equal(calls[[1]], list(detail = "Land Use (Own polygon)", value = 0))
-  expect_equal(calls[[length(calls)]], list(detail = NULL, value = 1))
-
-  packed <- retrieve_and_package(ov, save_files = FALSE, ndc_token = "t", adc_token = "t", pack = TRUE)
-  expect_s4_class(packed$datasets$`Land Use_1`, "PackedSpatRaster")
-
-  none <- retrieve_and_package(ov, save_files = FALSE, ndc_token = "t", adc_token = "t", return_data = FALSE)
-  expect_length(none$datasets, 0)
-  expect_true(none$produced_any)
-})
-
-test_that("retrieve_and_package zips, and leaves nothing behind", {
+  local_stac_api()  # the references are read from the STAC API
   local_mocked_bindings(get_landuse_raster = function(...) list(stack = raster()), .package = "rNDC")
   before <- list.files(tempdir(), "^ndc_export_")
   zip <- withr::local_tempfile(fileext = ".zip")
@@ -406,6 +373,7 @@ land_use_overview <- function() overview_row("Land Use", year = 2024L)
 inline_jobs <- function(...) fake_manager(run = TRUE, ...)
 
 test_that("a download is built in the background", {
+  local_stac_api()  # the references are read from the STAC API
   fake <- inline_jobs()
   local_jobs(fake$manager)
   rec <- new.env()
@@ -426,7 +394,7 @@ test_that("a download is built in the background", {
     expect_length(fake$rec$started, 1)
     expect_true(file.exists(prepared_zip()))
     expect_setequal(utils::unzip(prepared_zip(), list = TRUE)$Name,
-                    c("land_use_geodata_own_polygon.tif", "own_polygon.gpkg", "download_summary.csv"))
+                    c("land_use_geodata_own_polygon.tif", "own_polygon.gpkg", "download_summary.csv", "CITATIONS.txt"))
     expect_equal(rec$calls, 1)
     # the tokens reach the process through its environment, not in the arguments
     job <- fake$rec$jobs[[1]]

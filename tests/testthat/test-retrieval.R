@@ -32,7 +32,7 @@ test_that("Agricultural fields are retrieved page by page, zipped, and the expor
     dir <- withr::local_tempdir()
     utils::unzip(zip, exdir = dir)
     expect_setequal(list.files(dir), c("agricultural_fields_geodata_own_polygon.gpkg",
-                                       "download_summary.csv", "own_polygon.gpkg"))
+                                       "download_summary.csv", "own_polygon.gpkg", "CITATIONS.txt"))
     expect_equal(nrow(sf::st_read(file.path(dir, "agricultural_fields_geodata_own_polygon.gpkg"), quiet = TRUE)), 1003)
   })
   expect_identical(getwd(), wd)
@@ -149,6 +149,7 @@ test_that("an NDVI range is retrieved as a stack with NDVI_ layer names", {
 })
 
 test_that("rasters that cannot be retrieved are reported with the reason", {
+  local_stac_api()  # the references are read from the STAC API
   local_mocked_bindings(
     get_landuse_raster = function(...) stop("No Land Use raster items matched year 2024.", call. = FALSE),
     get_nitrogen_raster = function(...) list(stack = terra::rast(nrows = 2, ncols = 2, vals = 1:4)),
@@ -207,7 +208,7 @@ test_that("the same dataset for two years gives two files in the download", {
     utils::unzip(zip, exdir = dir)
     expect_setequal(list.files(dir), c("agricultural_fields_geodata_own_polygon.gpkg",
                                        "agricultural_fields_geodata_own_polygon_2023.gpkg",
-                                       "download_summary.csv", "own_polygon.gpkg"))
+                                       "download_summary.csv", "own_polygon.gpkg", "CITATIONS.txt"))
     summary <- utils::read.csv(file.path(dir, "download_summary.csv"))
     expect_equal(summary$file_path[summary$date == 2023], "agricultural_fields_geodata_own_polygon_2023.gpkg")
     expect_equal(nrow(res$datasets$`Agricultural fields_1`), 2)
@@ -229,7 +230,7 @@ test_that("two different polygons with the same name both end up in the download
     dir <- withr::local_tempdir()
     utils::unzip(zip, exdir = dir)
     expect_setequal(list.files(dir), c("own_polygon.gpkg", "own_polygon_2.gpkg", "soil_map_geodata_own_polygon.gpkg",
-                                       "soil_map_geodata_own_polygon_2.gpkg", "download_summary.csv"))
+                                       "soil_map_geodata_own_polygon_2.gpkg", "download_summary.csv", "CITATIONS.txt"))
     summary <- utils::read.csv(file.path(dir, "download_summary.csv"))
     expect_equal(sum(summary$dataset == "Area"), 2)
     expect_false(anyDuplicated(summary$file_path[!is.na(summary$file_path)]) > 0)
@@ -254,6 +255,7 @@ test_that("the export folder is returned only when it still exists", {
 })
 
 test_that("the progress follows what the rNDC functions report during a long retrieval", {
+  local_stac_api()  # the references are read from the STAC API
   rec <- new.env()
   rec$calls <- list()
   local_mocked_bindings(

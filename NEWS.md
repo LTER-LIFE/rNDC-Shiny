@@ -2,6 +2,7 @@
 
 ## New
 
+* The download has the references of the datasets: the columns `reference` and `license` of `download_summary.csv` are filled, and the zip has a `CITATIONS.txt` with the citation, DOI link, license and related publications of every dataset that was retrieved. They come from the metadata that the NatureDataCube publishes for its collections (`rNDC::ndc_metadata()`, the Scientific extension: `sci:citation`, `sci:doi`, `sci:publications`): Land Use from `lgn`, Nitrogen from `ntot`, `nox` and `nh3`, the NDVI rasters from `ndvi` and the NDVI statistics from `ndvi-lter` or `ndvi-snl`. The AgroDataCube datasets have no such metadata and are listed in `CITATIONS.txt` as retrieved from the AgroDataCube. If the metadata cannot be read the download is made without references, and the messages say so. This needs rNDC 0.5.2.
 * Drawing your own polygon (the polygon tool and the trash can of the map toolbar) and uploading polygon files (GeoPackage, shapefile, GeoJSON, KML, or a zip with these) are available again: both panels were switched off.
 * Limits for polygons that users bring: datasets (Weather excepted) are only added for polygons up to 1000 km2 (`NDC_MAX_AREA_KM2`), and an upload may have at most 1000 polygons per file or layer. The panels say so.
 * A polygon whose WKT is too long for AgroDataCube (its server refuses URLs above about 8000 characters, i.e. about 300 vertices) is sent with 6 decimals and, if needed, simplified up to 1000 m; the message of the dataset tells how much. Before, such a request failed.

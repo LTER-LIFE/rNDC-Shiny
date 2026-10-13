@@ -99,7 +99,8 @@ raster_item <- function(id, date) {
 # Stub the STAC API at example.org (landing page and /search) and point rNDC at it. `pages` is a list
 # with the items of each result page: every search returns the next page, linked as in the STAC spec.
 # `status` is the HTTP status of the search.
-local_stac_api <- function(pages = list(list()), status = 200L, env = parent.frame()) {
+local_stac_api <- function(pages = list(list()), status = 200L, env = parent.frame(),
+                           collections = reference_collections()) {
   local_webmock(env)
   webmockr::stub_registry_clear()  # a second call in the same test replaces the previous stubs
   webmockr::request_registry_clear()
@@ -128,7 +129,31 @@ local_stac_api <- function(pages = list(list()), status = 200L, env = parent.fra
                             numberMatched = sum(lengths(pages)), links = links)),
       headers = json_header)
   }
+  webmockr::stub_request("get", "https://example.org/api/collections") |>
+    webmockr::to_return(body = json_body(list(collections = collections, links = list())), headers = json_header)
   invisible(NULL)
+}
+
+# A STAC collection with the metadata of the Scientific extension, as the NatureDataCube publishes it
+ref_collection <- function(id, citation = paste("Citation of", id), doi = NULL, license = "CC-BY-4.0",
+                           publications = NULL) {
+  x <- list(type = "Collection", stac_version = "1.0.0", id = id, description = "d", license = license,
+            extent = list(spatial = list(bbox = list(c(0, 0, 1, 1))),
+                          temporal = list(interval = list(list(NULL, NULL)))),
+            `sci:citation` = citation, links = list())
+  if (!is.null(doi)) x[["sci:doi"]] <- doi
+  if (!is.null(publications)) x[["sci:publications"]] <- publications
+  x
+}
+
+# The collections that the app describes in the references of a download
+reference_collections <- function() {
+  list(ref_collection("lgn", "Hazeu et al. (2026). LGN2024.", doi = "10.4121/abc",
+                      publications = list(list(doi = "10.1/xyz", citation = "A related paper."))),
+       ref_collection("ntot", "RIVM (2025). Nitrogen deposition."), ref_collection("nox", "RIVM (2025). Nitrogen deposition."),
+       ref_collection("nh3", "RIVM (2025). Nitrogen deposition."),
+       ref_collection("ndvi", "Groenmonitor (2026). NDVI."), ref_collection("ndvi-lter", "LTER NDVI statistics."),
+       ref_collection("ndvi-snl", "SNL NDVI statistics."))
 }
 
 # ---- AgroDataCube REST API ----

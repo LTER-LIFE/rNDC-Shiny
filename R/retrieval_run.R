@@ -28,9 +28,10 @@ retrieve_overview <- function(ov, workdir, ndc_token, adc_token, progress = no_p
   list(results = results, manifest_rows = manifest_rows, messages = messages)
 }
 
-# Retrieve the overview and package it: with `save_files`, the data and the download summary are written to
-# a folder (`workdir`, a new temporary one by default), and zipped when a `zipfile` is given (the folder is
-# then removed). Returns the data (`datasets`; empty with `return_data = FALSE`), the `overview`, the
+# Retrieve the overview and package it: with `save_files`, the data, the download summary and the references of
+# the datasets (CITATIONS.txt) are written to a folder (`workdir`, a new temporary one by default), and zipped when
+# a `zipfile` is given (the folder is then removed). The summary has the reference and license of the datasets
+# that the NatureDataCube describes (see R/references.R). Returns the data (`datasets`; empty with `return_data = FALSE`), the `overview`, the
 # `messages`, the `summary` and whether any data was produced. With `pack`, rasters and vectors of terra are
 # wrapped, so that they can be sent from a background process (they are pointers otherwise).
 retrieve_and_package <- function(ov, zipfile = NULL, save_files = TRUE, workdir = NULL,
@@ -52,7 +53,18 @@ retrieve_and_package <- function(ov, zipfile = NULL, save_files = TRUE, workdir 
   manifest_df <- if (length(run$manifest_rows) > 0) dplyr::bind_rows(run$manifest_rows) else tibble::tibble()
   produced_any <- any_data_produced(manifest_df)
 
+  # the reference and the license of the datasets, from the metadata of the NatureDataCube
+  messages <- run$messages
+  metadata <- NULL
+  if (produced_any) {
+    refs <- add_references(manifest_df, ndc_token)
+    manifest_df <- refs$summary
+    metadata <- refs$metadata
+    messages <- c(messages, refs$message)
+  }
+
   if (save_files) {
+    if (produced_any) write_citations(workdir, manifest_df, metadata)
     utils::write.csv(manifest_df, file.path(workdir, "download_summary.csv"), row.names = FALSE)
 
     # Only write a zip when data was actually produced.
@@ -67,7 +79,7 @@ retrieve_and_package <- function(ov, zipfile = NULL, save_files = TRUE, workdir 
   out <- list(
     datasets = datasets,
     overview = ov,
-    messages = run$messages,
+    messages = messages,
     summary = manifest_df,
     produced_any = produced_any
   )
