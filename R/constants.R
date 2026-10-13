@@ -62,11 +62,19 @@ request_seconds <- c(weather_chunk = 0.9, ndvi_day = 0.25)
 warn_request_seconds <- 60
 max_request_seconds <- function() getOption("rNDC.Shiny.max_request_seconds", if (async_enabled()) 900 else 300)
 
-# Earliest data of the sources, checked against the live services (see test-live.R). They bound what
-# the date and year inputs offer.
-weather_min_date <- as.Date("1970-01-01")  # KNMI daily data; the closest station may start later (then: "no data")
-ndvi_min_month <- as.Date("2017-05-01")    # the GroenMonitor daily NDVI starts on 2017-05-26
-fields_min_year <- 2009L                   # AgroDataCube field geometries (2008 has none)
+# Earliest data of the sources. They bound what the date and year inputs offer. They are the coverage that rNDC
+# states for the datasets of the AgroDataCube and GroenMonitor (rNDC::ndc_external_datasets(), where they are
+# checked against the live services), evaluated on first use.
+external_start <- function(id) {
+  ext <- rNDC::ndc_external_datasets()
+  ext$start[ext$id == id]
+}
+# KNMI daily data; the closest station may start later (then: "no data")
+delayedAssign("weather_min_date", external_start("weather"))
+# the GroenMonitor daily NDVI starts on 2017-05-26: the inputs are by month
+delayedAssign("ndvi_min_month", as.Date(format(external_start("groenmonitor-ndvi"), "%Y-%m-01")))
+# AgroDataCube field geometries (2008 has none)
+delayedAssign("fields_min_year", as.integer(format(external_start("agricultural-fields"), "%Y")))
 
 # Defaults of the rasters, taken from rNDC (>= 0.5.1) and evaluated on first use: the STAC collection of the
 # Land Use rasters, its default year, and the nitrogen layers.

@@ -8,6 +8,7 @@ app_server <- function(input, output, session) {
   helpers <- create_map_helpers(session, state)
 
   server_availability(input, output, session, state, helpers)
+  server_catalogue(input, output, session, state, helpers)
   dataset <- server_dataset(input, output, session, state, helpers)
   server_projects(input, output, session, state, helpers)
   server_map(input, output, session, state, helpers)

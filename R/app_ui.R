@@ -500,6 +500,8 @@ app_ui <- function() {
         hr(),
         uiOutput("dataset_metadata"),
         uiOutput("availability"),
+        tags$div(style = "margin-top:10px;",
+                 actionButton("show_catalogue", "Which datasets exist for the selected area?", class = "btn-custom")),
         tags$div(style = "margin-top:18px;", actionButton("add_dataset", "Add to overview", class = "btn-custom"))
       )
     ),

@@ -23,14 +23,11 @@ cached_check <- function(key, compute) {
   value
 }
 
-# The outline of the Netherlands, in the Dutch grid (the file is bundled with rNDC), read once per process
+# The outline of the Netherlands, in the Dutch grid (bundled with rNDC), read once per process; NULL if it cannot be read
 netherlands_outline <- local({
   outline <- NULL
   function() {
-    if (is.null(outline)) {
-      file <- system.file("extdata", "nl.gpkg", package = "rNDC")
-      if (nzchar(file)) outline <<- tryCatch(sf::st_read(file, quiet = TRUE), error = function(e) NULL)
-    }
+    if (is.null(outline)) outline <<- tryCatch(rNDC::ndc_netherlands(), error = function(e) NULL)
     outline
   }
 })
