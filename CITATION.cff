@@ -6,8 +6,8 @@ abstract: >-
   A Shiny app that gives a graphical user interface to find and get data from
   LTER-LIFE's NatureDataCube (and the related AgroDataCube and GroenMonitor
   services), built on the functions of the rNDC package.
-version: "0.5.1"
-date-released: 2026-10-12
+version: "0.5.2"
+date-released: 2026-10-13
 license: Apache-2.0
 repository-code: "https://github.com/LTER-LIFE/rNDC-Shiny"
 url: "https://github.com/LTER-LIFE/rNDC-Shiny"
