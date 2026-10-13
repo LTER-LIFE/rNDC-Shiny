@@ -14,6 +14,8 @@ You can select an existing project area, draw your own polygon on the map, or up
    - Datasets can be added for polygons up to the area limit shown in the panels (Weather has no limit); AgroDataCube datasets (Agricultural fields, Soil map, AHN) receive a simplified polygon if yours has very many vertices.
    - Click polygons on the map to select / deselect them. Selected polygons are highlighted blue and will be used for dataset queries.
 
+   - After you select an area, the datasets in the list are marked: a check mark when data was found, a cross when none was found, a question mark when the check could not be made. Point at a dataset to read why. A dataset marked with a cross can still be added.
+
 2) Choosing a dataset (left sidebar)
    - Use the "Choose dataset for the selected area" menu to pick a dataset (e.g. Weather, NDVI).
    - Click the small (i) icon next to a dataset to see dataset metadata/description (information modal).

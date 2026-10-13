@@ -171,6 +171,11 @@ app_ui <- function() {
         }
         .ndc-subcategory { margin: 6px 0 6px 10px; padding: 4px 8px; border-left: 2px solid #e6eef6; }
         .ndc-subcategory > summary { font-weight: 600; color: #2d7da6; list-style: none; cursor: pointer; outline: none; padding: 4px; font-size: 14px; }
+        .ndc-ds.av-yes::after { content: ' \\2713'; color: #2e7d32; font-weight: 700; }
+        .ndc-ds.av-partial::after { content: ' \\2713'; color: #b26a00; font-weight: 700; }
+        .ndc-ds.av-no::after { content: ' \\2717'; color: #b26a00; font-weight: 700; }
+        .ndc-ds.av-unknown::after { content: ' ?'; color: #888; font-weight: 700; }
+        .ndc-ds.av-pending::after { content: ' \\2026'; color: #888; }
         .ndc-leaf { margin: 6px 0 6px 10px; padding: 4px 8px 4px 12px; border-left: 2px solid #e6eef6; font-weight: 600; color: #2d7da6; font-size: 14px; }
         .ndc-leaf:hover { background: #eef4fb; }
         .ndc-leaf.selected { color: #1f5a8a; }
@@ -342,6 +347,27 @@ app_ui <- function() {
             }
           });
         });
+        // Marks in the dataset menu: which datasets have data for the selected area. null clears them, pending
+        // shows that the check is coming, otherwise the status and the sentence (title) of each dataset.
+        Shiny.addCustomMessageHandler('ndc_availability', function(msg) {
+          var items = document.querySelectorAll('.ndc-ds[id^=\"ndc-ds-\"]');
+          items.forEach(function(el) {
+            el.classList.remove('av-yes', 'av-partial', 'av-no', 'av-unknown', 'av-na', 'av-pending');
+            el.removeAttribute('title');
+          });
+          if (!msg) return;
+          if (msg.pending) {
+            items.forEach(function(el) { if (!el.classList.contains('disabled-ds')) el.classList.add('av-pending'); });
+            return;
+          }
+          var names = [].concat(msg.datasets || []), status = [].concat(msg.status || []), detail = [].concat(msg.detail || []);
+          names.forEach(function(name, i) {
+            var el = document.getElementById('ndc-ds-' + String(name).split(' ').join('_'));
+            if (!el || el.classList.contains('disabled-ds')) return;
+            el.classList.add('av-' + status[i]);
+            if (detail[i]) el.setAttribute('title', detail[i]);
+          });
+        });
         Shiny.addCustomMessageHandler('ndc_toggle_add_button', function(enabled) {
           var btn = document.getElementById('add_dataset');
           if (!btn) return;
@@ -404,6 +430,7 @@ app_ui <- function() {
         uiOutput("snl_status"),
         br(),
         h4("Choose dataset(s)"),
+        helpText("Once you have selected an area, the datasets are marked: \u2713 data found, \u2717 none found (the dataset can still be added), ? could not be checked. Point at a dataset for the details."),
         tags$div(
           tags$details(class = "ndc-category",
                        tags$summary("Atmosphere"),

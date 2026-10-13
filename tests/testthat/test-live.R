@@ -88,6 +88,23 @@ test_that("AgroDataCube accepts a polygon with many vertices once it is shortene
   expect_match(outcome$ok_msg, "simplified")
 })
 
+test_that("the availability check finds data in the Netherlands and none abroad", {
+  skip_unless_live()
+  local_clean_cache()
+  square <- function(x, y, name) {
+    geom <- sf::st_as_sfc(sf::st_bbox(c(xmin = x, ymin = y, xmax = x + 0.01, ymax = y + 0.01), crs = sf::st_crs(4326)))
+    sf::st_sf(source_name = name, geometry = geom)
+  }
+  years <- list("Agricultural fields" = 2023, "Land Use" = "2024", "Nitrogen" = "2024")
+  nl <- check_area_availability(square(5.66, 51.99, "Own polygon_1"), Sys.getenv("NDC_TOKEN"), Sys.getenv("ADC_TOKEN"), years)
+  yes <- c("Weather", "Soil map", "AHN", "Agricultural fields", "Land Use", "Nitrogen", "NDVI")
+  expect_equal(nl$status[match(yes, nl$dataset)], rep("yes", length(yes)), info = paste(nl$detail, collapse = " | "))
+
+  abroad <- check_area_availability(square(4.6, 50.6, "Own polygon_1"), Sys.getenv("NDC_TOKEN"), Sys.getenv("ADC_TOKEN"), years)
+  no <- c("Soil map", "AHN", "Agricultural fields", "Land Use", "Nitrogen", "NDVI")
+  expect_equal(abroad$status[match(no, abroad$dataset)], rep("no", length(no)), info = paste(abroad$detail, collapse = " | "))
+})
+
 test_that("there is data at the earliest dates and years that the app offers", {
   skip_unless_live()
   # NDVI: GroenMonitor starts on 2017-05-26 (ndvi_min_month); it is not downloaded here, as that takes a minute.
@@ -117,5 +134,10 @@ test_that("the availability check finds raster items for a place in the Netherla
 
   expect_gt(count_items(ndc_landuse_collection, here), 0)
   expect_equal(count_items(ndc_landuse_collection, elsewhere), 0)
-  expect_true(all(items_in_area(nitrogen_layer_choices, here, "2024") > 0))
+
+  # one search for all raster collections
+  table <- rNDC::stac_availability(c(ndc_landuse_collection, nitrogen_layer_choices), here, Sys.getenv("NDC_TOKEN"))
+  expect_true(all(c(ndc_landuse_collection, nitrogen_layer_choices) %in% table$collection))
+  expect_true("2024" %in% table$year)
+  expect_equal(nrow(rNDC::stac_availability(c(ndc_landuse_collection, nitrogen_layer_choices), elsewhere, Sys.getenv("NDC_TOKEN"))), 0)
 })

@@ -118,6 +118,16 @@ test_that("uploaded GeoPackages are imported, or queued when they have several l
   expect_equal(process_uploaded_files(NULL), list(imported = NULL, pending_gpkg = NULL))
 })
 
+test_that("a long cache key is shortened with a hash, and a short one is kept", {
+  expect_equal(cache_key("count", "lgn", "POLYGON((0 0))"), "count|lgn|POLYGON((0 0))")
+  long <- cache_key("avail", "soil", strrep("1.123456 52.123456,", 3000))
+  expect_lt(nchar(long), 200)
+  expect_false(identical(long, cache_key("avail", "soil", strrep("1.123457 52.123456,", 3000))))  # another polygon
+  local_clean_cache()
+  cache_set(long, 1)  # a name of an environment may not be longer than 10000 bytes
+  expect_equal(cache_get(long), 1)
+})
+
 test_that("the cache returns values until they expire", {
   local_clean_cache()
   expect_null(cache_get("k"))

@@ -139,7 +139,10 @@ server_dataset <- function(input, output, session, state, helpers) {
                  conditionalPanel(condition = "input.weather_mode == 'single'",
                                   dateInput("weather_date", "Date (single):", value = Sys.Date() - 1, min = weather_min_date, max = Sys.Date())),
                  conditionalPanel(condition = "input.weather_mode == 'period'",
-                                  dateRangeInput("weather_period", "From - To:", start = Sys.Date() - 31, end = Sys.Date() - 1, min = weather_min_date, max = Sys.Date()))
+                                  dateRangeInput("weather_period", "From - To:", start = Sys.Date() - 31, end = Sys.Date() - 1, min = weather_min_date, max = Sys.Date())),
+                 numericInput("weather_max_km", "Largest distance to the weather station (km):",
+                              value = isolate(state$weather_max_km()), min = 1, max = 1000, step = 5),
+                 helpText("The data come from the weather station closest to the centre of the area. The menu marks Weather as available when that station is not farther away than this.")
         )
       )
 
@@ -312,6 +315,9 @@ server_dataset <- function(input, output, session, state, helpers) {
     }
 
     if (length(new_rows) > 0) {
+      # where the check found no data, say so (the dataset is added anyway: the check does not know everything)
+      found <- availability_of(isolate(state$availability()), ds_label)
+      if (!is.null(found) && found$status == "no") showNotification(no_data_warning(found), type = "warning", duration = 10)
       added <- dplyr::bind_rows(new_rows)
       # the whole overview is retrieved at once, so it is the total that counts
       seconds <- sum(estimate_row_seconds(ov$dataset, ov$view, ov$date_from, ov$date_to),
@@ -336,36 +342,6 @@ server_dataset <- function(input, output, session, state, helpers) {
     if (!is.null(df) && nrow(df) > 0) disable_stats <- TRUE
     if (!is.null(up) && nrow(up) > 0) disable_stats <- TRUE
     session$sendCustomMessage("ndc_toggle_statistics", disable_stats)
-  })
-
-  # Does the selected area have data for the selected raster dataset (Land Use, Nitrogen)? The number of
-  # STAC items that intersect it, for the selected year. Debounced, so that selecting polygons one after
-  # another does not make a request for each.
-  availability <- reactive({
-    ds <- input$selected_dataset
-    sel <- selected_polygons()
-    collections <- if (is.null(ds)) NULL else availability_collections()[[ds]]
-    if (is.null(collections) || is.null(sel) || nrow(sel) == 0) return(NULL)
-
-    year <- switch(ds, "Land Use" = input$landuse_year, "Nitrogen" = input$nitrogen_year)
-    list(dataset = ds, year = year,
-         counts = items_in_area(collections, sf::st_union(sf::st_geometry(sel)), year, state$mytoken))
-  }) %>% debounce(400)
-
-  output$availability <- renderUI({
-    a <- availability()
-    if (is.null(a) || all(is.na(a$counts))) return(NULL)
-
-    what <- if (!is.null(a$year) && nzchar(a$year)) paste0(a$dataset, " data for ", a$year) else paste0(a$dataset, " data")
-    style <- "margin-top:8px; font-size:13px; color:"
-    missing <- names(a$counts)[!is.na(a$counts) & a$counts == 0]
-    if (length(missing) > 0) {
-      layers <- if (length(a$counts) > 1) paste0(" (", paste(missing, collapse = ", "), ")") else ""
-      tags$div(style = paste0(style, "#b26a00;"),
-               paste0("No ", what, " found for the selected area", layers, "."))
-    } else {
-      tags$div(style = paste0(style, "#2e7d32;"), paste0(what, " is available for the selected area."))
-    }
   })
 
   invisible(list(build_controls_for = build_controls_for))

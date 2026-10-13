@@ -6,6 +6,13 @@ ndc_cache <- new.env()
 
 ndc_cache_ttl <- 3600  # seconds
 
+# A cache key from the parts that identify the question. A long key (the WKT of a complex polygon) is shortened with a
+# hash: the names in an environment are limited to 10000 bytes.
+cache_key <- function(...) {
+  key <- paste(..., sep = "|")
+  if (nchar(key) > 200) paste0(substr(key, 1, 60), "|", rlang::hash(key)) else key
+}
+
 cache_get <- function(key) {
   hit <- ndc_cache[[key]]
   if (!is.null(hit) && difftime(Sys.time(), hit$time, units = "secs") < ndc_cache_ttl) hit$value else NULL
@@ -37,7 +44,7 @@ cache_set <- function(key, value) {
 # Number of STAC items of `collection` that intersect `roi` (an sf/sfc object), optionally within `trange`,
 # via rNDC::ndc_count(). NA if the request fails. Cached per collection, area and time range.
 count_items <- function(collection, roi, trange = NULL, token = Sys.getenv("NDC_TOKEN")) {
-  key <- paste("count", collection, trange, sf::st_as_text(sf::st_geometry(roi))[1], sep = "|")
+  key <- cache_key("count", collection, trange, sf::st_as_text(sf::st_geometry(roi))[1])
   n <- cache_get(key)
   if (!is.null(n)) return(n)
 
@@ -45,34 +52,6 @@ count_items <- function(collection, roi, trange = NULL, token = Sys.getenv("NDC_
                 error = function(e) NA_real_)
   if (length(n) != 1 || is.na(n)) return(NA_real_)
   cache_set(key, n)
-}
-
-# The counts of `count_items()` for several collections (named by collection), for one year if given. What is not
-# in the cache is asked in one call of rNDC::ndc_datasets(); if that fails, one collection at a time, so that the
-# collections that can be counted are.
-items_in_area <- function(collections, roi, year = NULL, token = Sys.getenv("NDC_TOKEN")) {
-  trange <- rNDC::stac_year_trange(year)
-  if (!is.null(trange)) trange <- rNDC::ndc_trange(trange)
-  area <- sf::st_as_text(sf::st_geometry(roi))[1]
-  key <- function(collection) paste("count", collection, trange, area, sep = "|")
-
-  counts <- vapply(collections, function(collection) {
-    n <- cache_get(key(collection))
-    if (is.null(n)) NA_real_ else n
-  }, numeric(1))
-  todo <- collections[is.na(counts)]
-  if (length(todo) > 0) {
-    fresh <- tryCatch(rNDC::ndc_datasets(roi = roi, trange = trange, token = token, matched = TRUE,
-                                         collections = todo)$n_matched,
-                      error = function(e) NULL)
-    if (length(fresh) == length(todo) && !anyNA(fresh)) {
-      for (i in seq_along(todo)) cache_set(key(todo[i]), as.numeric(fresh[i]))
-      counts[todo] <- as.numeric(fresh)
-    } else {
-      counts[todo] <- vapply(todo, function(collection) count_items(collection, roi, trange, token), numeric(1))
-    }
-  }
-  counts
 }
 
 # Years for which rasters exist: read from the STAC items (via rNDC), cached, falling back to the known years

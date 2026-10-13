@@ -43,12 +43,6 @@ lter_class_patterns <- c("Light on Nature" = "^Lantaarnpaal", "Loobos" = "^Loobo
                          "Nestboxes" = "Nestkast", "Nutnet" = "^Nutnet$")
 lter_class_levels <- names(lter_class_patterns)
 
-# The datasets for which the app checks whether the selected area has data, and the STAC collection(s) to ask.
-# (NDVI statistics are left out: items that intersect a project area include its neighbours.)
-availability_collections <- function() {
-  list("Land Use" = ndc_landuse_collection, "Nitrogen" = nitrogen_layer_choices)
-}
-
 # Largest upload (MB). Shiny's own limit is 5 MB, which is too small for many shapefiles and GeoPackages.
 # Set another with the environment variable NDC_MAX_UPLOAD_MB, or the option `shiny.maxRequestSize` (in bytes).
 default_upload_mb <- 100

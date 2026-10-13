@@ -35,6 +35,10 @@ create_state <- function(ndc_token, adc_token) {
     # a zip that the download pre-check built and verified to contain data, so that the download handler
     # can serve it without retrieving again
     prepared_zip = reactiveVal(NULL),
+    # which datasets have data for the selected area (R/availability.R), or NULL
+    availability = reactiveVal(NULL),
+    # how far (km) the weather station may be for the Weather check; the input only exists while Weather is chosen
+    weather_max_km = reactiveVal(weather_max_station_km),
     # is a retrieval of this session running in the background?
     retrieving = reactiveVal(FALSE),
     job_id = reactiveVal(NULL),  # the background job of the session (see R/jobs.R)

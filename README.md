@@ -88,6 +88,8 @@ Areas of interest can be one of the project areas (LTER projects, or SNL parcels
 * Datasets (Weather excepted, which uses the centre of the polygon) are only added for polygons up to 1000 km2 (`NDC_MAX_AREA_KM2` changes this); larger polygons are listed in a message and skipped.
 * AgroDataCube (Agricultural fields, Soil map, AHN) takes the polygon in the URL, which its server refuses above about 8000 characters (some 300 vertices). A longer polygon is sent with 6 decimals and, if that is not enough, simplified in steps of 1 to 1000 m; the message of the dataset says by how much. The files of the other datasets use the polygon as it is.
 
+**Which datasets have data?** When you select an area, the app checks which datasets have data for it and marks them in the menu: a check mark (green, orange where only part of the data was found, e.g. not all nitrogen layers), a cross where nothing was found, a question mark where the check could not be made. Point at a dataset for the details. Land Use and Nitrogen are checked in the NatureDataCube (for the year you chose), Soil map, AHN and Agricultural fields (for the chosen year) with AgroDataCube, Weather by the distance to the closest station (at most 30 km by default; the Weather settings have a box "Largest distance to the weather station (km)" to change it), the NDVI rasters by whether the area is in the Netherlands and the NDVI statistics by whether it is an LTER or SNL project area. The check tells what the services know about the area, so a dataset marked with a cross can still be added (the app warns).
+
 ## Running with Docker or Podman
 
 The Shiny app can also be run as a container, which installs the package (`rNDC.Shiny`) and all its dependencies, including `rNDC`, automatically.

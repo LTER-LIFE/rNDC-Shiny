@@ -9,6 +9,8 @@
 * Uploaded and drawn polygons are checked: a polygon that crosses itself is repaired (a drawn one can; the toolbar allows it), z coordinates are dropped, and a polygon that cannot be repaired is left out. A file without a coordinate system (or with an "undefined" one, as a GeoPackage can have, which used to make the upload fail) is taken to be in WGS84, and the app says so. The notes are shown after the upload.
 * A zip file is not read when it has more than 200 files, unpacks to more than 500 MB, or has paths outside the archive. Files in folders of a zip are found.
 
+* The datasets are marked in the menu when an area has been selected: a check mark where data was found, a cross where none was, a question mark where the check failed (point at a dataset for the sentence). The check covers all datasets: Land Use and Nitrogen from the NatureDataCube (one search for all of them instead of one per collection, with `rNDC::stac_availability()`, new in rNDC after 0.5.1), Soil map, AHN and Agricultural fields by a request to AgroDataCube, Weather by the distance to the closest station (30 km at most, which the Weather settings have a box for), the NDVI rasters by the outline of the Netherlands and the NDVI statistics by project areas. A dataset where no data was found can still be added, with a warning.
+
 ## Fixes
 
 * Uploads no longer leave temporary folders in the shared temp directory: they are removed when the file has been read, or, for a zipped GeoPackage that waits for a layer to be chosen, when the session ends.
