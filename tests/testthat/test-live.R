@@ -71,6 +71,23 @@ test_that("AgroDataCube results are fetched completely", {
   expect_gt(length(res$features), 100)
 })
 
+test_that("AgroDataCube accepts a polygon with many vertices once it is shortened", {
+  # The server refuses URLs above about 8000 characters (500 vertices fail, 300 work): adc_max_wkt_chars is below that.
+  skip_unless_live()
+  a <- seq(0, 2 * pi, length.out = 801)
+  r <- 0.003 * (1 + 0.05 * sin(7 * a))
+  geom <- sf::st_sfc(sf::st_polygon(list(cbind(5.66 + r * cos(a), 51.99 + r * sin(a)))), crs = 4326)
+  poly <- sf::st_sf(geometry = geom)
+  row <- tibble::tibble(dataset = "Agricultural fields", view = "Geodata", year = 2023L, polygon = "Own polygon",
+                        wkt = sf::st_as_text(geom), polygon_sf = list(poly),
+                        date_from = as.Date(NA), date_to = as.Date(NA))
+  expect_gt(nchar(row$wkt), 10000)
+
+  outcome <- retrieve_agricultural_fields(row, Sys.getenv("ADC_TOKEN"))
+  expect_gt(nrow(outcome$data), 0)
+  expect_match(outcome$ok_msg, "simplified")
+})
+
 test_that("there is data at the earliest dates and years that the app offers", {
   skip_unless_live()
   # NDVI: GroenMonitor starts on 2017-05-26 (ndvi_min_month); it is not downloaded here, as that takes a minute.

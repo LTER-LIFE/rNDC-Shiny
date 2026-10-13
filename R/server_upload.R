@@ -28,16 +28,21 @@ server_upload <- function(input, output, session, state, helpers) {
     res <- process_uploaded_files(files, start_layer_id = start_id)
     imported <- res$imported
     pending <- res$pending_gpkg
+    if (!is.null(imported) && nrow(imported) > max_upload_features) {
+      showNotification(paste0("The upload has ", nrow(imported), " polygons: at most ", max_upload_features,
+                              " are accepted. Split the file or remove polygons that you do not need."),
+                       type = "error", duration = 10)
+      imported <- NULL
+    }
 
     if (!is.null(imported) && nrow(imported) > 0) {
-      existing_max <- if (!is.null(uploaded_polys())) max(as.integer(uploaded_polys()$layer_id), na.rm = TRUE) else 0
-      new_layer_id <- as.integer(existing_max + 1)
-      imported$layer_id <- new_layer_id
+      base_name <- if (!is.null(files$name) && length(files$name) >= 1) files$name[1] else "Uploaded"
+      imported <- number_uploaded(imported, uploaded_polys())
+      imported$upload_name <- base_name
       imported$wkt <- sf::st_as_text(sf::st_geometry(imported))
       imported$source <- "uploaded"
       imported$pending_pid <- NA_character_
       imported$pending_layer <- NA_character_
-      base_name <- if (!is.null(files$name) && length(files$name) >= 1) files$name[1] else "Uploaded"
       imported <- assign_sequential_source_names(imported, base_name = base_name, overview(), fixed_polys(), uploaded_polys(), drawn_features())
 
       tmp_up <- if (is.null(uploaded_polys())) imported else dplyr::bind_rows(uploaded_polys(), imported)
@@ -128,19 +133,20 @@ server_upload <- function(input, output, session, state, helpers) {
         if (is.null(uploaded) || nrow(uploaded) == 0) {
           p("No uploaded/imported polygon layers yet.", style = "color: grey; font-style: italic;")
         } else {
-          uniq <- dplyr::distinct(uploaded, layer_id, .keep_all = TRUE)
+          # one row per upload (a file, or a layer of a GeoPackage), with the number of its features
+          uniq <- dplyr::distinct(uploaded, upload_id, .keep_all = TRUE)
           tags$table(class = "table table-condensed",
                      tags$thead(tags$tr(tags$th("Source"), tags$th("Features"), tags$th("Remove"))),
                      tags$tbody(
                        lapply(seq_len(nrow(uniq)), function(i) {
                          row <- uniq[i, ]
                          tags$tr(
-                           tags$td(row$source_name),
-                           tags$td("1"),
+                           tags$td(row$upload_name),
+                           tags$td(sum(uploaded$upload_id == row$upload_id)),
                            tags$td(actionButton(
-                             paste0("remove_uploaded_", row$layer_id),
+                             paste0("remove_uploaded_", row$upload_id),
                              "Remove",
-                             onclick = sprintf("Shiny.setInputValue('remove_uploaded', %d, {priority: 'event'})", row$layer_id),
+                             onclick = sprintf("Shiny.setInputValue('remove_uploaded', %d, {priority: 'event'})", row$upload_id),
                              class = "btn-delete"
                            ))
                          )
@@ -194,13 +200,18 @@ server_upload <- function(input, output, session, state, helpers) {
             return(NULL)
           }
 
+          if (nrow(poly_only) > max_upload_features) {
+            showNotification(paste0("Layer ", chosen_layer, " has ", nrow(poly_only), " polygons: at most ",
+                                    max_upload_features, " are accepted."), type = "error", duration = 10)
+            return(NULL)
+          }
+
           poly_only <- sf::st_transform(poly_only, 4326)
           poly_only$source <- "uploaded"
           poly_only$pending_layer <- chosen_layer
           base_name <- paste0(p$name, " :: ", chosen_layer)
-          existing_max <- if (!is.null(uploaded_polys())) max(as.integer(uploaded_polys()$layer_id), na.rm = TRUE) else 0
-          new_layer_id <- as.integer(existing_max + 1)
-          poly_only$layer_id <- new_layer_id
+          poly_only <- number_uploaded(poly_only, uploaded_polys())
+          poly_only$upload_name <- base_name
           poly_only$wkt <- sf::st_as_text(sf::st_geometry(poly_only))
           poly_only$pending_pid <- my_pid
           poly_only <- assign_sequential_source_names(poly_only, base_name = base_name, overview(), fixed_polys(), uploaded_polys(), drawn_features())
@@ -234,12 +245,13 @@ server_upload <- function(input, output, session, state, helpers) {
   })
 
   observeEvent(input$remove_uploaded, {
-    lid <- as.integer(input$remove_uploaded)
-    if (is.na(lid)) return(NULL)
+    uid <- as.integer(input$remove_uploaded)  # the upload (all its features), not a single shape
+    if (is.na(uid)) return(NULL)
     cur <- uploaded_polys()
     if (is.null(cur) || nrow(cur) == 0) return(NULL)
-    lip <- which(as.integer(cur$layer_id) == lid)
+    lip <- which(as.integer(cur$upload_id) == uid)
     if (length(lip) > 0) {
+      removed_layer_ids <- as.integer(cur$layer_id[lip])
       removed_source_name <- cur$source_name[lip[1]]
       removed_pid <- if ("pending_pid" %in% names(cur)) cur$pending_pid[lip[1]] else NA_character_
       removed_pending_layer <- if ("pending_layer" %in% names(cur)) cur$pending_layer[lip[1]] else NA_character_
@@ -252,7 +264,7 @@ server_upload <- function(input, output, session, state, helpers) {
 
       sel <- selected_polygons()
       if (!is.null(sel) && nrow(sel) > 0 && "source" %in% names(sel)) {
-        keep_idx <- !(sel$source == "uploaded" & as.integer(sel$layer_id) == lid)
+        keep_idx <- !(sel$source == "uploaded" & as.integer(sel$layer_id) %in% removed_layer_ids)
         new_sel <- sel[keep_idx, , drop = FALSE]
         if (nrow(new_sel) == 0) new_sel <- NULL
         selected_polygons(new_sel)

@@ -19,14 +19,8 @@ server_map <- function(input, output, session, state, helpers) {
         rectangleOptions = FALSE,
         markerOptions = FALSE,
         circleMarkerOptions = FALSE,
-        # Drawing your own polygon on the map is temporarily disabled.
-        # To re-enable, uncomment the line below and remove/comment out polygonOptions = FALSE.
-        # polygonOptions = drawPolygonOptions(showArea = TRUE, repeatMode = FALSE),
-        polygonOptions = FALSE,
-        # Remove/trash-bin button is temporarily disabled.
-        # To re-enable, uncomment the line below and remove/comment out the line after it.
-        # editOptions = editToolbarOptions(edit = FALSE, remove = TRUE)
-        editOptions = editToolbarOptions(edit = FALSE, remove = FALSE)
+        polygonOptions = drawPolygonOptions(showArea = TRUE, repeatMode = FALSE),
+        editOptions = editToolbarOptions(edit = FALSE, remove = TRUE)
       )
   })
 

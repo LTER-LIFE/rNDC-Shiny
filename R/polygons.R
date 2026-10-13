@@ -40,6 +40,19 @@ next_layer_id <- function(...) {
   max(c(ids, 0L), na.rm = TRUE) + 1L
 }
 
+# Number the features of a new upload: each gets its own `layer_id` (the id of its shape on the map), and all
+# share an `upload_id`, which identifies the upload (a file, or a layer of a GeoPackage) in the list of uploads
+# and when it is removed. `existing` is the sf object of the uploads so far (or NULL).
+number_uploaded <- function(new, existing = NULL) {
+  last <- function(column) {
+    if (is.null(existing) || nrow(existing) == 0 || !column %in% names(existing)) return(0L)
+    max(as.integer(existing[[column]]), 0L, na.rm = TRUE)
+  }
+  new$layer_id <- last("layer_id") + seq_len(nrow(new))
+  new$upload_id <- last("upload_id") + 1L
+  new
+}
+
 convert_drawn_to_sf <- function(feat, start_layer_id = 1) {
   if (is.null(feat) || is.null(feat$geometry) || feat$geometry$type != "Polygon") return(NULL)
   coords <- feat$geometry$coordinates[[1]]
@@ -210,6 +223,8 @@ process_uploaded_files <- function(files_df, start_layer_id = 1) {
 assign_uploaded_colors <- function(up_sf, drawn_features_val = NULL, fixed_polys_val = NULL) {
   if (is.null(up_sf) || nrow(up_sf) == 0) return(up_sf)
   up_sf$color <- "#2b8cbe"
+  has <- function(x) !is.null(x) && nrow(x) > 0
+  if (!has(drawn_features_val) && !has(fixed_polys_val)) return(up_sf)  # nothing to overlap with
   layer_ids <- unique(up_sf$layer_id)
   for (lid in layer_ids) {
     idxs <- which(up_sf$layer_id == lid)

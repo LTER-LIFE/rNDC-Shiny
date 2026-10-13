@@ -110,3 +110,17 @@ test_that("deleting without details removes all drawn polygons, and with none dr
     expect_null(selected_polygons())
   })
 })
+
+test_that("the map offers the polygon tool and the trash can of the draw toolbar", {
+  with_server({
+    toolbar <- jsonlite::fromJSON(as.character(output$map), simplifyVector = FALSE)
+    call <- Filter(function(x) identical(x$method, "addDrawToolbar"), toolbar$x$calls)[[1]]
+    options <- call$args[[3]]
+    expect_true(is.list(options$draw$polygon))          # the polygon tool (and no other shape)
+    expect_true(options$draw$polygon$showArea)
+    expect_false(options$draw$polyline)
+    expect_false(options$draw$rectangle)
+    expect_true(options$edit$remove)                   # the trash can
+    expect_false(options$edit$edit)
+  })
+})

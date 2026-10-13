@@ -272,6 +272,10 @@ server_dataset <- function(input, output, session, state, helpers) {
     ov <- overview()
     new_rows <- list()
 
+    # polygons above the area limit (not for Weather, which uses the centroid)
+    too_large <- if (ds_label %in% area_limited_datasets()) polygons_too_large(sel) else character(0)
+    if (length(too_large) > 0) showNotification(too_large_message(too_large), type = "error", duration = 10)
+
     for (i in seq_len(nrow(sel))) {
       poly <- sel[i, , drop = FALSE]
       assigned_name <- if ("source_name" %in% names(poly) && !is.na(poly$source_name[1]) && nzchar(as.character(poly$source_name[1]))) {
@@ -279,6 +283,7 @@ server_dataset <- function(input, output, session, state, helpers) {
       } else {
         "Own polygon"
       }
+      if (assigned_name %in% too_large) next
 
       is_dup <- FALSE
       if (nrow(ov) > 0) {
@@ -319,7 +324,7 @@ server_dataset <- function(input, output, session, state, helpers) {
       if (seconds > warn_request_seconds) {
         showNotification(long_retrieval_warning(seconds), type = "warning", duration = 10)
       }
-    } else {
+    } else if (length(too_large) == 0) {
       showNotification("Selected dataset(s) already present for the selected polygon(s) with the same settings.", type = "message")
     }
   })

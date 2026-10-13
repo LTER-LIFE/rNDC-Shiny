@@ -263,15 +263,6 @@ app_ui <- function() {
           pointer-events: none;
           opacity: 0.6;
         }
-        .ndc-category.disabled-category {
-          opacity: 0.55;
-          pointer-events: none;
-          cursor: not-allowed;
-        }
-        .ndc-category.disabled-category summary {
-          color: #9aa6b2;
-          cursor: not-allowed;
-        }
         .nav-tabs {
           margin-bottom: 18px;
         }
@@ -393,18 +384,21 @@ app_ui <- function() {
                      tags$a(id = "proj-snl", class = "fixed-item ndc-ds ndc-leaf", href = "#",
                             onclick = HTML("ndcSelectProject(this, 'snl'); return false;"), "SNL sites")
         ),
-        tags$details(class = "ndc-category disabled-category",
+        tags$details(class = "ndc-category",
                      tags$summary("Upload your own polygon(s)"),
                      tags$div(style = "margin-top:8px;",
-                              helpText(paste0("Supported file formats: .gpkg, .shp. For shapefiles, upload all layers: .shp, .shx, .dbf, and preferably .prj. ",
-                                              "The files together can be up to ", format(round(max_upload_mb()), trim = TRUE), " MB.")),
+                              helpText(paste0("Supported file formats: .gpkg, .shp, .geojson, .kml, or a .zip with these. For shapefiles, upload all layers: .shp, .shx, .dbf, and preferably .prj. ",
+                                              "The files together can be up to ", format(round(max_upload_mb()), trim = TRUE), " MB, ",
+                                              "with at most ", max_upload_features, " polygons per file or layer. ",
+                                              "Datasets can be added for polygons up to ", format(max_area_km2(), big.mark = ","), " km2 ",
+                                              "(Weather has no limit). Files without a coordinate system are assumed to be in WGS84.")),
                               fileInput("upload", "Upload polygons", multiple = TRUE, accept = c(".gpkg", ".shp", ".shx", ".dbf", ".prj", ".zip", ".geojson", ".json", ".kml")),
                               uiOutput("upload_panel"),
                               tags$div(style = "margin-top:6px;"))
         ),
-        tags$details(class = "ndc-category disabled-category",
+        tags$details(class = "ndc-category",
                      tags$summary("Draw your own polygon"),
-                     tags$div(style = "margin-top:8px;", helpText("Use the draw toolbar on the map below to create polygon(s). Click a polygon to select or deselect it. Use the edit/remove tools on the map toolbar to delete drawn shapes."), tags$div(style = "margin-top:6px;"))
+                     tags$div(style = "margin-top:8px;", helpText("Use the polygon tool of the draw toolbar on the map below to create polygon(s): click each corner, and finish on the first corner. Click a polygon to select or deselect it. Use the trash can of the toolbar to delete drawn shapes. Datasets can be added for polygons up to ", format(max_area_km2(), big.mark = ","), " km2 (Weather has no limit)."), tags$div(style = "margin-top:6px;"))
         ),
         leafletOutput("map", height = "400px"),
         uiOutput("snl_status"),

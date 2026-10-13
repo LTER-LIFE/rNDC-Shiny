@@ -21,7 +21,8 @@ AHN and Agricultural fields) are disabled. \code{SHINY_APP_BASE_URL} sets the pr
 behind a reverse proxy (e.g. \verb{/naturedatacube}). \code{NDC_MAX_UPLOAD_MB} sets the largest upload (default 100 MB;
 Shiny's own default is 5 MB). \code{NDC_MAX_REQUEST_SECONDS} sets the longest retrieval that
 is accepted (default 300 seconds): the overview is estimated when a dataset is added, and a retrieval keeps
-the app busy until it is done.
+the app busy until it is done. \code{NDC_MAX_AREA_KM2} sets the largest polygon (default 1000 km2) for which datasets can be
+added (Weather excepted): a drawn or uploaded polygon can be any size, and a huge area makes a huge download.
 
 In a non-interactive session (a deployment, e.g. the Docker image) the retrievals run in background R processes,
 so that a long one does not hold the other users up; \code{NDC_ASYNC} (\code{true} or \code{false}) chooses the mode, and

@@ -27,28 +27,31 @@ outcome_none <- function(message, file_type, status = "failed") {
 vector_ext <- function(row) if (tolower(as.character(row$view)) == "statistics") "csv" else "gpkg"
 
 # AgroDataCube answers with GeoJSON
-adc_sf_outcome <- function(row, response) {
+adc_sf_outcome <- function(row, response, geometry = list(tolerance = 0)) {
   data <- geojsonsf::geojson_sf(jsonlite::toJSON(response, auto_unbox = TRUE))
   outcome_data(data, row$dataset, vector_ext(row),
-               ok_msg = paste0("Retrieved: ", row$dataset),
+               ok_msg = paste0("Retrieved: ", row$dataset, simplified_note(geometry)),
                fail_msg = paste0("Failed: ", row$dataset, " - could not write output"))
 }
 
 retrieve_agricultural_fields <- function(row, adc_token) {
-  response <- rNDC::adc_get_all("Fields", c(geometry = row$wkt, epsg = "4326", year = row$year, output_epsg = "4326"),
+  geometry <- adc_geometry(row)
+  response <- rNDC::adc_get_all("Fields", c(geometry = geometry$wkt, epsg = "4326", year = row$year, output_epsg = "4326"),
                                 token = adc_token)
-  adc_sf_outcome(row, response)
+  adc_sf_outcome(row, response, geometry)
 }
 
 retrieve_ahn <- function(row, adc_token) {
-  url <- rNDC::adc_url("AHN", params = c(geometry = row$wkt, epsg = "4326"))
-  adc_sf_outcome(row, rNDC::adc_get(url = url, token = adc_token))
+  geometry <- adc_geometry(row)
+  url <- rNDC::adc_url("AHN", params = c(geometry = geometry$wkt, epsg = "4326"))
+  adc_sf_outcome(row, rNDC::adc_get(url = url, token = adc_token), geometry)
 }
 
 retrieve_soil_map <- function(row, adc_token) {
-  response <- rNDC::adc_get_all("Soiltypes", c(geometry = row$wkt, epsg = "4326", output_epsg = "4326"),
+  geometry <- adc_geometry(row)
+  response <- rNDC::adc_get_all("Soiltypes", c(geometry = geometry$wkt, epsg = "4326", output_epsg = "4326"),
                                 token = adc_token)
-  adc_sf_outcome(row, response)
+  adc_sf_outcome(row, response, geometry)
 }
 
 retrieve_weather <- function(row, adc_token) {

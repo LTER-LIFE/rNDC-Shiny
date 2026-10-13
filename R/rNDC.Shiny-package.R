@@ -5,7 +5,7 @@
 #'
 #' @import shiny
 #' @importFrom leaflet leaflet leafletOutput renderLeaflet addTiles setView
-#' @importFrom leaflet.extras addDrawToolbar editToolbarOptions
+#' @importFrom leaflet.extras addDrawToolbar drawPolygonOptions editToolbarOptions
 #' @importFrom shinyjs useShinyjs
 #' @importFrom magrittr %>%
 #' @importFrom lubridate as_datetime
@@ -13,4 +13,4 @@
 "_PACKAGE"
 
 # Column names used with non-standard evaluation (dplyr, leaflet formulas) and the `.` pipe placeholder
-utils::globalVariables(c(".", "layer_id", "month", "ndvi_mean", "ndvi_std"))
+utils::globalVariables(c(".", "layer_id", "month", "ndvi_mean", "ndvi_std", "upload_id"))
