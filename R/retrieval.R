@@ -23,6 +23,12 @@ outcome_none <- function(message, file_type, status = "failed") {
 
 # ---- Retrieval per dataset ----
 
+# The retrieval functions of rNDC can record their parameters (`save_params`, see rNDC::ndc_repeat()). A retrieval
+# records them in files that start with `stem` (NULL: not at all): `params_slot(stem)` is the path for the file of the
+# data, `params_slot(stem, "station")` for another call of the same dataset. Afterwards the files are moved to their
+# place in the download, or read (see `retrieve_row()`).
+params_slot <- function(stem, slot = "data") if (is.null(stem)) NULL else paste0(stem, "_", slot, ".json")
+
 # File type of the vector datasets: a table for the Statistics view, a GeoPackage otherwise.
 vector_ext <- function(row) if (tolower(as.character(row$view)) == "statistics") "csv" else "gpkg"
 
@@ -34,31 +40,32 @@ adc_sf_outcome <- function(row, response, geometry = list(tolerance = 0)) {
                fail_msg = paste0("Failed: ", row$dataset, " - could not write output"))
 }
 
-retrieve_agricultural_fields <- function(row, adc_token) {
+retrieve_agricultural_fields <- function(row, adc_token, stem = NULL) {
   geometry <- adc_geometry(row)
   response <- rNDC::adc_get_all("Fields", c(geometry = geometry$wkt, epsg = "4326", year = row$year, output_epsg = "4326"),
-                                token = adc_token)
+                                token = adc_token, save_params = params_slot(stem))
   adc_sf_outcome(row, response, geometry)
 }
 
-retrieve_ahn <- function(row, adc_token) {
+retrieve_ahn <- function(row, adc_token, stem = NULL) {
   geometry <- adc_geometry(row)
   url <- rNDC::adc_url("AHN", params = c(geometry = geometry$wkt, epsg = "4326"))
-  adc_sf_outcome(row, rNDC::adc_get(url = url, token = adc_token), geometry)
+  adc_sf_outcome(row, rNDC::adc_get(url = url, token = adc_token, save_params = params_slot(stem)), geometry)
 }
 
-retrieve_soil_map <- function(row, adc_token) {
+retrieve_soil_map <- function(row, adc_token, stem = NULL) {
   geometry <- adc_geometry(row)
   response <- rNDC::adc_get_all("Soiltypes", c(geometry = geometry$wkt, epsg = "4326", output_epsg = "4326"),
-                                token = adc_token)
+                                token = adc_token, save_params = params_slot(stem))
   adc_sf_outcome(row, response, geometry)
 }
 
-retrieve_weather <- function(row, adc_token) {
+retrieve_weather <- function(row, adc_token, stem = NULL) {
   ext <- vector_ext(row)
   failed <- function(message) outcome_none(paste0("Failed: Weather - ", message), ext)
 
-  closest_id <- rNDC::get_closest_meteostation(row$wkt, token = adc_token)$closest_id
+  closest_id <- rNDC::get_closest_meteostation(row$wkt, token = adc_token,
+                                               save_params = params_slot(stem, "station"))$closest_id
   # get_closest_meteostation() gives character(0) (not NULL) when no id is found
   if (length(closest_id) != 1 || is.na(closest_id) || !nzchar(closest_id)) {
     return(failed("no nearby station found"))
@@ -66,10 +73,11 @@ retrieve_weather <- function(row, adc_token) {
   if (is.na(row$date_from) || is.na(row$date_to)) return(failed("missing date range"))
 
   meteo <- if (row$date_from == row$date_to) {
-    rNDC::get_meteo_for_date(closest_id, row$date_from, adc_token)
+    rNDC::get_meteo_for_date(closest_id, row$date_from, adc_token, save_params = params_slot(stem))
   } else {
     rNDC::get_meteo_for_long_period(meteostation = closest_id, fromdate = row$date_from,
-                                    todate = row$date_to, token = adc_token, by_days = weather_chunk_days, sleep_sec = weather_chunk_sleep)
+                                    todate = row$date_to, token = adc_token, by_days = weather_chunk_days,
+                                    sleep_sec = weather_chunk_sleep, save_params = params_slot(stem))
   }
   if (is.null(meteo) || nrow(meteo) == 0) return(failed("no data returned"))
 
@@ -89,27 +97,27 @@ retrieve_raster <- function(dataset, year, retrieve) {
                fail_msg = paste0("Failed: ", dataset, " - could not write output"))
 }
 
-retrieve_nitrogen <- function(row, ndc_token) {
+retrieve_nitrogen <- function(row, ndc_token, stem = NULL) {
   retrieve_raster("Nitrogen", row$year, function() {
     rNDC::get_nitrogen_raster(aoi = row$polygon_sf[[1]], year = row$year, layers = nitrogen_layer_choices,
                               token = ndc_token, out_dir = tempdir(), overwrite = TRUE, limit = 100,
-                              file_prefix = tempfile())
+                              file_prefix = tempfile(), save_params = params_slot(stem))
   })
 }
 
-retrieve_land_use <- function(row, ndc_token) {
+retrieve_land_use <- function(row, ndc_token, stem = NULL) {
   year <- row$year
   if (is.na(year)) year <- as.integer(landuse_default_year)
   retrieve_raster("Land Use", year, function() {
     rNDC::get_landuse_raster(aoi = row$polygon_sf[[1]], year = year, token = ndc_token, out_dir = tempdir(),
-                             overwrite = TRUE, limit = 100, file_prefix = tempfile())
+                             overwrite = TRUE, limit = 100, file_prefix = tempfile(), save_params = params_slot(stem))
   })
 }
 
 # Monthly NDVI statistics for LTER and SNL project areas, from the STAC API
-retrieve_ndvi_statistics <- function(row) {
+retrieve_ndvi_statistics <- function(row, stem = NULL) {
   stats <- fetch_ndvi_stats_monthly(row$polygon_sf[[1]], detect_ndvi_collection(row$polygon),
-                                    row$date_from, row$date_to)
+                                    row$date_from, row$date_to, save_params = params_slot(stem))
   if (identical(stats$status, "skip")) {
     msg <- if (is.null(stats$error)) "NDVI statistics unavailable for this area." else stats$error
     return(outcome_none(paste0("Skipped: NDVI statistics - ", msg), "csv", status = msg))
@@ -135,7 +143,7 @@ retrieve_ndvi_statistics <- function(row) {
 
 # Monthly average NDVI rasters (one month, or a range of months), from GroenMonitor. The period is the one
 # stored in the overview row, not what the input widgets say at the time of the retrieval.
-retrieve_ndvi_rasters <- function(row, index) {
+retrieve_ndvi_rasters <- function(row, index, stem = NULL) {
   poly <- row$polygon_sf[[1]]
   from <- row$date_from
   to <- row$date_to
@@ -144,7 +152,7 @@ retrieve_ndvi_rasters <- function(row, index) {
     year <- as.integer(format(from, "%Y"))
     month <- as.integer(format(from, "%m"))
     label <- paste0(year, "-", sprintf("%02d", month))
-    r <- rNDC::download_avg_ndvi_month(poly, year, month)
+    r <- rNDC::download_avg_ndvi_month(poly, year, month, save_params = params_slot(stem))
     if (is.null(r)) {
       msg <- "No data available for this month"
       return(outcome_none(paste0("NDVI ", label, ": ", msg), "tif", status = msg))
@@ -162,7 +170,8 @@ retrieve_ndvi_rasters <- function(row, index) {
   stack <- tryCatch(
     rNDC::download_avg_ndvi_stack(poly = poly,
                                   start_year = as.integer(format(from, "%Y")), start_month = as.integer(format(from, "%m")),
-                                  end_year = as.integer(format(to, "%Y")), end_month = as.integer(format(to, "%m"))),
+                                  end_year = as.integer(format(to, "%Y")), end_month = as.integer(format(to, "%m")),
+                                  save_params = params_slot(stem)),
     error = function(e) { err <<- conditionMessage(e); NULL }
   )
   if (is.null(stack) || terra::nlyr(stack) == 0) {
@@ -177,20 +186,20 @@ retrieve_ndvi_rasters <- function(row, index) {
                fail_msg = "Failed: NDVI - could not write output")
 }
 
-retrieve_ndvi <- function(row, index) {
-  if (tolower(as.character(row$view)) == "statistics") retrieve_ndvi_statistics(row) else retrieve_ndvi_rasters(row, index)
+retrieve_ndvi <- function(row, index, stem = NULL) {
+  if (tolower(as.character(row$view)) == "statistics") retrieve_ndvi_statistics(row, stem) else retrieve_ndvi_rasters(row, index, stem)
 }
 
 # Call the retrieval function of the dataset of `row`
-retrieve_dataset <- function(row, index, ndc_token, adc_token) {
+retrieve_dataset <- function(row, index, ndc_token, adc_token, stem = NULL) {
   switch(row$dataset,
-    "Agricultural fields" = retrieve_agricultural_fields(row, adc_token),
-    "AHN" = retrieve_ahn(row, adc_token),
-    "Soil map" = retrieve_soil_map(row, adc_token),
-    "Weather" = retrieve_weather(row, adc_token),
-    "Nitrogen" = retrieve_nitrogen(row, ndc_token),
-    "Land Use" = retrieve_land_use(row, ndc_token),
-    "NDVI" = retrieve_ndvi(row, index),
+    "Agricultural fields" = retrieve_agricultural_fields(row, adc_token, stem),
+    "AHN" = retrieve_ahn(row, adc_token, stem),
+    "Soil map" = retrieve_soil_map(row, adc_token, stem),
+    "Weather" = retrieve_weather(row, adc_token, stem),
+    "Nitrogen" = retrieve_nitrogen(row, ndc_token, stem),
+    "Land Use" = retrieve_land_use(row, ndc_token, stem),
+    "NDVI" = retrieve_ndvi(row, index, stem),
     outcome_none(paste0("Skipped: ", row$dataset, " is not wired to a retrieval endpoint yet."),
                  NA_character_, status = "skipped")
   )
@@ -200,15 +209,32 @@ retrieve_dataset <- function(row, index, ndc_token, adc_token) {
 
 # Retrieve the dataset of one row of the overview. With a `workdir`, the data and the polygon are written
 # there; without one, nothing is written. Returns the retrieved `data` and its `name` (NULL if nothing was
-# retrieved), the rows for the download summary (`manifest`) and the `messages`.
-retrieve_row <- function(row, index, workdir = NULL, ndc_token, adc_token) {
+# retrieved), the rows for the download summary (`manifest`) and the `messages`. With `parameters`, the rNDC functions
+# record their parameters (see rNDC::ndc_repeat()): with a `workdir` they go to the folder `parameters` of it, named
+# after the data file; without one they are returned in `parameters` (the texts of the JSON files, by the call:
+# `data`, and for Weather `station`).
+retrieve_row <- function(row, index, workdir = NULL, ndc_token, adc_token, parameters = TRUE) {
   save_files <- !is.null(workdir)
   ds <- row$dataset
   view <- row$view
   polygon <- row$polygon
   date_label <- format_date_label(row$year, row$date_from, row$date_to)
-  summary_row <- function(file_type, file_path, status, note = "") {
-    manifest_row(ds, view, polygon, date_label, file_type, file_path, status, note)
+  summary_row <- function(file_type, file_path, status, note = "", parameters = NA_character_) {
+    manifest_row(ds, view, polygon, date_label, file_type, file_path, status, note, parameters = parameters)
+  }
+
+  # the files that the retrieval functions record their parameters in start with `stem` (hidden, in the folder of the
+  # download, or in a folder of their own); they are moved or read below, and what is left is removed
+  stem <- NULL
+  recorded <- list()
+  if (isTRUE(parameters)) {
+    scratch <- if (save_files) workdir else tempfile("ndc_params_")
+    dir.create(scratch, showWarnings = FALSE, recursive = TRUE)
+    stem <- file.path(scratch, paste0(".params_", index))
+    on.exit({
+      unlink(parameter_files(stem))
+      if (!save_files) unlink(scratch, recursive = TRUE)
+    }, add = TRUE)
   }
 
   # Filename base includes the polygon name; all output filenames lowercase.
@@ -226,7 +252,7 @@ retrieve_row <- function(row, index, workdir = NULL, ndc_token, adc_token) {
   }
 
   tryCatch({
-    outcome <- retrieve_dataset(row, index, ndc_token, adc_token)
+    outcome <- retrieve_dataset(row, index, ndc_token, adc_token, stem)
 
     if (is.null(outcome$data)) {
       messages <- c(messages, outcome$message)
@@ -237,9 +263,12 @@ retrieve_row <- function(row, index, workdir = NULL, ndc_token, adc_token) {
       if (save_files) {
         file <- unique_export_file(workdir, file_base, outcome$ext, date_label)
         ok <- outcome$writer(file)
-        manifest <- c(manifest, list(summary_row(outcome$ext, basename(file), if (ok) "ok" else "failed")))
+        placed <- if (ok && !is.null(stem)) place_parameters(stem, workdir, file) else NA_character_
+        manifest <- c(manifest, list(summary_row(outcome$ext, basename(file), if (ok) "ok" else "failed",
+                                                 parameters = placed)))
         messages <- c(messages, if (ok) outcome$ok_msg else outcome$fail_msg)
       } else {
+        if (!is.null(stem)) recorded <- read_parameters(stem)
         manifest <- c(manifest, list(summary_row(outcome$ext, NA_character_, "ok")))
         messages <- c(messages, outcome$ok_msg)
       }
@@ -249,7 +278,46 @@ retrieve_row <- function(row, index, workdir = NULL, ndc_token, adc_token) {
     manifest <<- c(manifest, list(summary_row(NA_character_, NA_character_, "failed", note = e$message)))
   })
 
-  list(data = data, name = name, manifest = manifest, messages = messages)
+  list(data = data, name = name, manifest = manifest, messages = messages, parameters = recorded)
+}
+
+# ---- The parameters of the retrievals (JSON files, see rNDC::ndc_repeat()) ----
+
+# The files that were recorded for the stem
+parameter_files <- function(stem) {
+  files <- list.files(dirname(stem), all.files = TRUE, full.names = TRUE)
+  files[startsWith(basename(files), paste0(basename(stem), "_")) & endsWith(files, ".json")]
+}
+
+# The slot (`data`, `station`) of a recorded file
+parameter_slot <- function(stem, file) {
+  sub("\\.json$", "", substring(basename(file), nchar(basename(stem)) + 2))
+}
+
+# Move the files recorded for the stem to the folder `parameters` of the download, named after `data_file`: the file
+# of the data is `<name>.json`, another one `<name>_<slot>.json`. Returns the path of the file of the data in the zip
+# (`parameters/<name>.json`), or NA if the retrieval recorded none.
+place_parameters <- function(stem, workdir, data_file) {
+  files <- parameter_files(stem)
+  if (length(files) == 0) return(NA_character_)
+  dir.create(file.path(workdir, "parameters"), showWarnings = FALSE)
+  base <- tools::file_path_sans_ext(basename(data_file))
+  placed <- NA_character_
+  for (file in files) {
+    slot <- parameter_slot(stem, file)
+    name <- if (slot == "data") base else paste0(base, "_", slot)
+    target <- file.path(workdir, "parameters", paste0(name, ".json"))
+    if (file.exists(target)) next  # (the names of the data files are free: this does not happen)
+    if (file.rename(file, target) && slot == "data") placed <- paste0("parameters/", name, ".json")
+  }
+  placed
+}
+
+# The texts of the files recorded for the stem, by slot
+read_parameters <- function(stem) {
+  files <- parameter_files(stem)
+  texts <- lapply(files, function(file) paste(readLines(file, warn = FALSE, encoding = "UTF-8"), collapse = "\n"))
+  stats::setNames(texts, vapply(files, function(file) parameter_slot(stem, file), ""))
 }
 
 # Path for the file of a dataset in `dir`. The names are built from the dataset, the view and the polygon,
@@ -308,9 +376,10 @@ same_polygon <- function(file, geom) {
 
 # A row of the download summary
 manifest_row <- function(dataset, view, polygon, date, file_type, file_path, status, note = "",
-                         reference = NA_character_, license = NA_character_) {
+                         reference = NA_character_, license = NA_character_, parameters = NA_character_) {
   tibble::tibble(dataset = dataset, view = view, polygon = polygon, date = date, file_type = file_type,
-                 file_path = file_path, status = status, note = note, reference = reference, license = license)
+                 file_path = file_path, status = status, note = note, reference = reference, license = license,
+                 parameters = parameters)
 }
 
 format_date_label <- function(year, date_from, date_to) {
@@ -340,7 +409,8 @@ any_data_produced <- function(manifest) {
 # `root` avoids setwd(), which would change the working directory of every session served by this R process.
 zip_export <- function(workdir, zipfile) {
   files <- list.files(workdir, recursive = TRUE, full.names = FALSE, no.. = TRUE)
-  if (length(files) > 0) zip::zipr(zipfile, files = files, root = workdir)
+  # mirror: the files in folders (`parameters`) keep their folder; the default puts every file at the top
+  if (length(files) > 0) zip::zipr(zipfile, files = files, root = workdir, mode = "mirror")
   invisible(zipfile)
 }
 

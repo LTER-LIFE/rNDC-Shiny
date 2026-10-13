@@ -82,7 +82,8 @@ test_that("downloading builds the zip once, checks it, and serves it", {
     zip <- prepared_zip()
     expect_true(file.exists(zip))
     expect_setequal(utils::unzip(zip, list = TRUE)$Name,
-                    c("soil_map_geodata_own_polygon.gpkg", "own_polygon.gpkg", "download_summary.csv", "CITATIONS.txt"))
+                    c("soil_map_geodata_own_polygon.gpkg", "own_polygon.gpkg", "download_summary.csv", "CITATIONS.txt",
+                      "parameters/soil_map_geodata_own_polygon.json"))
 
     served <- output$download_data  # the path of the file that would be sent
     expect_true(file.exists(served))

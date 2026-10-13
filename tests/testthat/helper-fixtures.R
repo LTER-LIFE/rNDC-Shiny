@@ -256,3 +256,13 @@ import_layer <- function(session, pid, layer) {
   names(inputs) <- c(paste0("select_gpkg_", pid), paste0("import_gpkg_", pid))
   do.call(session$setInputs, inputs)
 }
+
+# Run `code` inside the server with `rows` in the overview; `code` can use retrieve_and_save() and `zip`.
+with_overview <- function(rows, code) {
+  withr::local_envvar(NDC_TOKEN = "t", ADC_TOKEN = "t", .local_envir = parent.frame())
+  code <- substitute(code)
+  shiny::testServer(app_server, {
+    overview(dplyr::bind_rows(rows))
+    eval(code, list2env(list(zip = tempfile(fileext = ".zip")), parent = environment()))
+  })
+}

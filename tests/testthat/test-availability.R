@@ -59,7 +59,7 @@ mock_services <- function(env = parent.frame(), soil = 1, ahn = list(area = 1, m
   rec <- new.env()
   rec$calls <- character(0)
   testthat::local_mocked_bindings(
-    adc_get = function(url = NULL, option = NULL, params = NULL, server = "adc", token) {
+    adc_get = function(url = NULL, option = NULL, params = NULL, server = "adc", token, ...) {
       if (!is.null(option)) {
         rec$calls <- c(rec$calls, option)
         rec$params <- params

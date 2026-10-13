@@ -5,10 +5,12 @@
 no_progress <- function(detail = NULL, value = NULL) invisible(NULL)
 
 # Retrieve every row of the overview `ov`. Returns the data (`results`, named after the datasets and their
-# rows), the rows for the download summary (`manifest_rows`) and the `messages`.
-retrieve_overview <- function(ov, workdir, ndc_token, adc_token, progress = no_progress) {
+# rows), the rows for the download summary (`manifest_rows`), the `messages` and, when nothing is written
+# (`workdir` is NULL), the `parameters` of the retrievals (see retrieve_row()).
+retrieve_overview <- function(ov, workdir, ndc_token, adc_token, progress = no_progress, parameters = TRUE) {
   n <- nrow(ov)
   results <- list()
+  recorded <- list()
   manifest_rows <- list()
   messages <- character(0)
 
@@ -17,26 +19,29 @@ retrieve_overview <- function(ov, workdir, ndc_token, adc_token, progress = no_p
     progress(detail = label, value = (i - 1) / n)
     # the retrieval functions say how far they are (see rNDC::ndc_with_progress()): show it
     res <- with_request_progress(
-      retrieve_row(ov[i, ], i, workdir, ndc_token = ndc_token, adc_token = adc_token), label, i, n, progress
+      retrieve_row(ov[i, ], i, workdir, ndc_token = ndc_token, adc_token = adc_token, parameters = parameters),
+      label, i, n, progress
     )
     if (!is.null(res$data)) results[[res$name]] <- res$data
+    if (length(res$parameters) > 0) recorded[[res$name]] <- res$parameters
     manifest_rows <- c(manifest_rows, res$manifest)
     messages <- c(messages, res$messages)
     progress(value = i / n)
   }
 
-  list(results = results, manifest_rows = manifest_rows, messages = messages)
+  list(results = results, manifest_rows = manifest_rows, messages = messages, parameters = recorded)
 }
 
 # Retrieve the overview and package it: with `save_files`, the data, the download summary and the references of
 # the datasets (CITATIONS.txt) are written to a folder (`workdir`, a new temporary one by default), and zipped when
 # a `zipfile` is given (the folder is then removed). The summary has the reference and license of the datasets
-# that the NatureDataCube describes (see R/references.R). Returns the data (`datasets`; empty with `return_data = FALSE`), the `overview`, the
+# that the NatureDataCube describes (see R/references.R), and with `parameters` the files with the parameters of the
+# retrievals are in the folder `parameters` (when nothing is written they are returned: `parameters`). Returns the data (`datasets`; empty with `return_data = FALSE`), the `overview`, the
 # `messages`, the `summary` and whether any data was produced. With `pack`, rasters and vectors of terra are
 # wrapped, so that they can be sent from a background process (they are pointers otherwise).
 retrieve_and_package <- function(ov, zipfile = NULL, save_files = TRUE, workdir = NULL,
                                  ndc_token = Sys.getenv("NDC_TOKEN"), adc_token = Sys.getenv("ADC_TOKEN"),
-                                 progress = no_progress, return_data = TRUE, pack = FALSE) {
+                                 progress = no_progress, return_data = TRUE, pack = FALSE, parameters = TRUE) {
   if (save_files) {
     if (is.null(workdir)) {
       # unique per call: all sessions share one R process and one tempdir()
@@ -48,7 +53,7 @@ retrieve_and_package <- function(ov, zipfile = NULL, save_files = TRUE, workdir 
     workdir <- NULL
   }
 
-  run <- retrieve_overview(ov, workdir, ndc_token, adc_token, progress)
+  run <- retrieve_overview(ov, workdir, ndc_token, adc_token, progress, parameters = parameters)
 
   manifest_df <- if (length(run$manifest_rows) > 0) dplyr::bind_rows(run$manifest_rows) else tibble::tibble()
   produced_any <- any_data_produced(manifest_df)
@@ -81,6 +86,7 @@ retrieve_and_package <- function(ov, zipfile = NULL, save_files = TRUE, workdir 
     overview = ov,
     messages = messages,
     summary = manifest_df,
+    parameters = run$parameters,
     produced_any = produced_any
   )
 

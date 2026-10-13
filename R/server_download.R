@@ -8,6 +8,10 @@ server_download <- function(input, output, session, state, helpers) {
   mytoken <- state$mytoken
   agro_token <- state$agro_token
 
+  # Should the download have the parameters of the retrievals (JSON files, see rNDC::ndc_repeat())? The checkbox is
+  # only there while there is an overview; until then, and in the tests, the answer is yes.
+  include_parameters <- function() !isFALSE(isolate(input$include_parameters))
+
   # Retrieve the datasets in the overview (see R/retrieval.R). With `save_files`, the data are also written
   # to a folder (and zipped when a `zipfile` is given); otherwise they are only returned.
   retrieve_and_save <- function(zipfile = NULL, save_files = TRUE, workdir = NULL) {
@@ -18,7 +22,7 @@ server_download <- function(input, output, session, state, helpers) {
     out <- withProgress(
       message = "Retrieving datasets...", value = 0,
       retrieve_and_package(ov, zipfile, save_files, workdir, ndc_token = mytoken, adc_token = agro_token,
-                           progress = report_progress)
+                           progress = report_progress, parameters = include_parameters())
     )
 
     # Show what happened to each dataset ("Retrieved: ...", "Failed: ... - reason") in the messages
@@ -53,7 +57,7 @@ server_download <- function(input, output, session, state, helpers) {
     id <- job_submit(
       jobs, "retrieve_and_package",
       list(ov = ov, zipfile = zipfile, save_files = save_files, workdir = NULL, return_data = return_data,
-           pack = TRUE),
+           pack = TRUE, parameters = include_parameters()),
       files = zipfile,
       # the tokens go to the process through its environment, not in the arguments (which are saved to a file)
       env = c(NDC_TOKEN = as.character(mytoken), ADC_TOKEN = as.character(agro_token))
@@ -117,6 +121,7 @@ server_download <- function(input, output, session, state, helpers) {
       div(style = "color: grey; font-style: italic;", "Download button will appear here once you add a dataset.")
     } else {
       busy <- !is.null(job_id())
+      tagList(
       div(style = "display:flex; gap:10px; align-items:center;",
           if (busy) {
             tagList(
@@ -134,7 +139,11 @@ server_download <- function(input, output, session, state, helpers) {
           # "Return data to R" stops the app and hands the data to the calling R
           # session (`x <- shiny::runApp(...)`). Only offered in an interactive
           # session: in a container it would just shut the app down.
-          if (interactive() && !busy) actionButton("return_to_r", "Return data to R (close app)", class = "btn-custom"))
+          if (interactive() && !busy) actionButton("return_to_r", "Return data to R (close app)", class = "btn-custom")),
+      # the choice stays when the buttons are drawn again
+      checkboxInput("include_parameters", "Include the parameters of each dataset (JSON files, to repeat the retrieval in R)",
+                    value = include_parameters())
+      )
     }
   })
 

@@ -113,11 +113,11 @@ test_that("the AgroDataCube datasets send the shortened polygon and say so", {
   rec <- new.env()
   rec$calls <- list()
   local_mocked_bindings(
-    adc_get_all = function(option, params, token) {
+    adc_get_all = function(option, params, token, ...) {
       rec$calls[[length(rec$calls) + 1]] <- c(list(option = option), as.list(params))
       geojson_features(1)
     },
-    adc_get = function(url, token) {
+    adc_get = function(url, token, ...) {
       rec$calls[[length(rec$calls) + 1]] <- list(option = "AHN", url = url)
       geojson_features(1)
     },

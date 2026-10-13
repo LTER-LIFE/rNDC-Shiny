@@ -47,6 +47,8 @@ Launching the app this way stores what you retrieve in an R object, so that you 
 - `overview`: the datasets, polygons and periods that were requested,
 - `messages` and `summary`: what happened to each dataset (retrieved, failed and why).
 
+The zip file also has a folder `parameters` with a JSON file per dataset: the parameters of the retrieval (the area as it was sent, the year or period, ...; never a token). `rNDC::ndc_repeat("parameters/land_use_geodata_loobos.json")` repeats a retrieval in R, and the column `parameters` of `download_summary.csv` tells which file belongs to which row. The checkbox "Include the parameters of each dataset" under the download button turns this off.
+
 The button "Which datasets exist for the selected area?" lists all the datasets for the selected polygons (and, optionally, a period): the NatureDataCube collections are checked against their items, and the AgroDataCube and GroenMonitor datasets are listed by the coverage that is known for them (`rNDC::ndc_available()`).
 
 The app can also be used to only download the data: "Download dataset(s)" gives a zip file with the data, the selected polygons, a `download_summary.csv` (with the `reference` and `license` of the datasets that the NatureDataCube describes) and a `CITATIONS.txt` with the references to cite. They are read from the metadata of the NatureDataCube collections (`rNDC::ndc_metadata()`: `sci:citation`, `sci:doi`, `sci:publications` and the license); the AgroDataCube datasets have none, and are listed as such. If the metadata cannot be read, the download is made without references and the messages say so.

@@ -2,16 +2,6 @@
 
 export_dirs <- function() list.files(tempdir(), "^ndc_export_")
 
-# Run `code` inside the server with `rows` in the overview; `code` can use retrieve_and_save() and `zip`.
-with_overview <- function(rows, code) {
-  withr::local_envvar(NDC_TOKEN = "t", ADC_TOKEN = "t", .local_envir = parent.frame())
-  code <- substitute(code)
-  shiny::testServer(app_server, {
-    overview(dplyr::bind_rows(rows))
-    eval(code, list2env(list(zip = tempfile(fileext = ".zip")), parent = environment()))
-  })
-}
-
 test_that("Agricultural fields are retrieved page by page, zipped, and the export folder is removed", {
   local_webmock()
   webmockr::stub_request("get", uri_regex = adc_re("fields")) |>
@@ -32,7 +22,16 @@ test_that("Agricultural fields are retrieved page by page, zipped, and the expor
     dir <- withr::local_tempdir()
     utils::unzip(zip, exdir = dir)
     expect_setequal(list.files(dir), c("agricultural_fields_geodata_own_polygon.gpkg",
-                                       "download_summary.csv", "own_polygon.gpkg", "CITATIONS.txt"))
+                                       "download_summary.csv", "own_polygon.gpkg", "CITATIONS.txt", "parameters"))
+    # the parameters of the retrieval, to repeat it in R (the download has the same area and year as the file says)
+    expect_equal(list.files(file.path(dir, "parameters")), "agricultural_fields_geodata_own_polygon.json")
+    recorded <- jsonlite::fromJSON(file.path(dir, "parameters", "agricultural_fields_geodata_own_polygon.json"),
+                                   simplifyVector = FALSE)
+    expect_equal(recorded$schema, "rNDC-adc_get_all/1")
+    expect_equal(recorded$option, "Fields")
+    expect_match(recorded$params$geometry, "^POLYGON")
+    expect_false(grepl("token", paste(readLines(file.path(dir, "parameters", "agricultural_fields_geodata_own_polygon.json")),
+                                      collapse = ""), ignore.case = TRUE))
     expect_equal(nrow(sf::st_read(file.path(dir, "agricultural_fields_geodata_own_polygon.gpkg"), quiet = TRUE)), 1003)
   })
   expect_identical(getwd(), wd)
@@ -208,9 +207,16 @@ test_that("the same dataset for two years gives two files in the download", {
     utils::unzip(zip, exdir = dir)
     expect_setequal(list.files(dir), c("agricultural_fields_geodata_own_polygon.gpkg",
                                        "agricultural_fields_geodata_own_polygon_2023.gpkg",
-                                       "download_summary.csv", "own_polygon.gpkg", "CITATIONS.txt"))
+                                       "download_summary.csv", "own_polygon.gpkg", "CITATIONS.txt", "parameters"))
     summary <- utils::read.csv(file.path(dir, "download_summary.csv"))
     expect_equal(summary$file_path[summary$date == 2023], "agricultural_fields_geodata_own_polygon_2023.gpkg")
+    # the files of the parameters are named after the data files, and say which year each is for
+    expect_equal(summary$parameters[summary$date == 2023], "parameters/agricultural_fields_geodata_own_polygon_2023.json")
+    expect_setequal(list.files(file.path(dir, "parameters")), c("agricultural_fields_geodata_own_polygon.json",
+                                                              "agricultural_fields_geodata_own_polygon_2023.json"))
+    years <- vapply(list.files(file.path(dir, "parameters"), full.names = TRUE),
+                    function(f) jsonlite::fromJSON(f, simplifyVector = FALSE)$params$year, "")
+    expect_setequal(unname(years), c("2023", "2024"))
     expect_equal(nrow(res$datasets$`Agricultural fields_1`), 2)
     expect_equal(nrow(res$datasets$`Agricultural fields_2`), 3)
   })
@@ -230,7 +236,8 @@ test_that("two different polygons with the same name both end up in the download
     dir <- withr::local_tempdir()
     utils::unzip(zip, exdir = dir)
     expect_setequal(list.files(dir), c("own_polygon.gpkg", "own_polygon_2.gpkg", "soil_map_geodata_own_polygon.gpkg",
-                                       "soil_map_geodata_own_polygon_2.gpkg", "download_summary.csv", "CITATIONS.txt"))
+                                       "soil_map_geodata_own_polygon_2.gpkg", "download_summary.csv", "CITATIONS.txt", "parameters"))
+    expect_setequal(list.files(file.path(dir, "parameters")), c("soil_map_geodata_own_polygon.json", "soil_map_geodata_own_polygon_2.json"))
     summary <- utils::read.csv(file.path(dir, "download_summary.csv"))
     expect_equal(sum(summary$dataset == "Area"), 2)
     expect_false(anyDuplicated(summary$file_path[!is.na(summary$file_path)]) > 0)

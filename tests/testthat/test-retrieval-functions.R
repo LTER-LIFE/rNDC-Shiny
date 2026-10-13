@@ -32,7 +32,7 @@ test_that("format_date_label describes a year, a date or a period", {
 test_that("manifest_row has the columns of the download summary", {
   expect_named(manifest_row("d", "v", "p", "2024", "csv", "f.csv", "ok"),
                c("dataset", "view", "polygon", "date", "file_type", "file_path", "status", "note",
-                 "reference", "license"))
+                 "reference", "license", "parameters"))
 })
 
 test_that("any_data_produced ignores the polygon helper file and failures", {
@@ -115,8 +115,8 @@ test_that("weather: one date uses get_meteo_for_date and a period the long-perio
   meteo <- sf::st_sf(day = 1, geometry = sf::st_sfc(sf::st_point(c(5, 52)), crs = 4326))
   local_mocked_bindings(
     get_closest_meteostation = function(...) list(closest_id = "260"),
-    get_meteo_for_date = function(id, date, token) { calls <<- c(calls, paste("date", id, format(date), token)); meteo },
-    get_meteo_for_long_period = function(meteostation, fromdate, todate, token, by_days, sleep_sec) {
+    get_meteo_for_date = function(id, date, token, ...) { calls <<- c(calls, paste("date", id, format(date), token)); meteo },
+    get_meteo_for_long_period = function(meteostation, fromdate, todate, token, by_days, sleep_sec, ...) {
       calls <<- c(calls, paste("period", meteostation, format(fromdate), format(todate), by_days))
       meteo
     },
@@ -201,7 +201,10 @@ test_that("retrieve_row writes the data, and the reference polygon once per poly
 
   expect_equal(vapply(first$manifest, function(m) m$dataset, ""), c("Area", "Soil map"))
   expect_equal(vapply(second$manifest, function(m) m$dataset, ""), "AHN")  # polygon already exported
-  expect_setequal(list.files(dir), c("area_a.gpkg", "soil_map_geodata_area_a.gpkg", "ahn_statistics_area_a.csv"))
+  expect_setequal(list.files(dir), c("area_a.gpkg", "soil_map_geodata_area_a.gpkg", "ahn_statistics_area_a.csv", "parameters"))
+  expect_setequal(list.files(file.path(dir, "parameters")),
+                  c("soil_map_geodata_area_a.json", "ahn_statistics_area_a.json"))   # next to the data, by the same name
+  expect_equal(first$manifest[[2]]$parameters, "parameters/soil_map_geodata_area_a.json")
   expect_equal(first$manifest[[1]]$note, "selected polygon geometry")
   expect_equal(first$manifest[[2]]$file_path, "soil_map_geodata_area_a.gpkg")
 })

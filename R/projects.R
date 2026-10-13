@@ -85,7 +85,7 @@ detect_ndvi_collection <- function(source_name) {
 # Returns list(status, data, error). Only fields actually present in the
 # collection output are used (ndvi_mean, ndvi_std, observation_date, ndc_id);
 # each is guarded so a missing field degrades gracefully instead of erroring.
-fetch_ndvi_stats_monthly <- function(roi_sf, collection, date_from, date_to) {
+fetch_ndvi_stats_monthly <- function(roi_sf, collection, date_from, date_to, save_params = NULL) {
   if (is.null(roi_sf)) {
     return(list(status = "error", data = NULL, error = "No region of interest."))
   }
@@ -106,7 +106,7 @@ fetch_ndvi_stats_monthly <- function(roi_sf, collection, date_from, date_to) {
   stats <- tryCatch(
     rNDC::get_ndvi_stats(roi_sf, collection,
                          from = if (is.null(date_from)) NA else date_from,
-                         to = if (is.null(date_to)) NA else date_to),
+                         to = if (is.null(date_to)) NA else date_to, save_params = save_params),
     error = function(e) structure("ndc_error", message = conditionMessage(e))
   )
   if (is.character(stats) && identical(as.character(stats), "ndc_error")) {
