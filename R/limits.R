@@ -10,6 +10,11 @@ max_area_km2 <- function() getOption("rNDC.Shiny.max_area_km2", default_max_area
 # polygon to select.
 max_upload_features <- 1000L
 
+# What a zip file may hold: a zip with more files, or that unpacks to more, is not read (a small zip can unpack to
+# gigabytes).
+max_zip_files <- 200L
+max_zip_unpacked_mb <- 500
+
 # The datasets whose retrieval depends on the area of the polygon
 area_limited_datasets <- function() setdiff(all_dataset_names, "Weather")
 

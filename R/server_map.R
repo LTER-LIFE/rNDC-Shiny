@@ -141,6 +141,11 @@ server_map <- function(input, output, session, state, helpers) {
 
     poly_sf <- convert_drawn_to_sf(feat, start_layer_id = start_id)
     req(poly_sf)
+    notes <- polygon_notes(poly_sf)
+    if (length(notes) > 0) {
+      showNotification(paste(notes, collapse = " "), type = if (nrow(poly_sf) == 0) "error" else "warning", duration = 8)
+    }
+    req(nrow(poly_sf) > 0)
 
     poly_sf <- assign_sequential_source_names(poly_sf, base_name = "Own polygon", overview(), fixed_polys(), uploaded_polys(), drawn_features())
 

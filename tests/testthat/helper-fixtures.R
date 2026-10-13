@@ -211,3 +211,23 @@ local_jobs <- function(manager, env = parent.frame()) {
   withr::local_options(rNDC.Shiny.async = TRUE, .local_envir = env)
   testthat::local_mocked_bindings(ndc_jobs = function() manager, .env = env)
 }
+
+# ---- uploads (test-upload.R, test-polygons.R) ----
+
+upload_files <- function(name, path) data.frame(name = name, size = 1L, type = "", datapath = path)
+
+write_layers <- function(path, layers) {
+  for (i in seq_along(layers)) {
+    sf::st_write(layers[[i]], path, layer = names(layers)[i], quiet = TRUE)
+  }
+  path
+}
+
+square_geometry <- function(x) fixed_square(1, x, 52.0)[, "geometry"]
+
+# Choose `layer` for the pending GeoPackage `pid` and click its "Import" button
+import_layer <- function(session, pid, layer) {
+  inputs <- list(layer, 1)
+  names(inputs) <- c(paste0("select_gpkg_", pid), paste0("import_gpkg_", pid))
+  do.call(session$setInputs, inputs)
+}

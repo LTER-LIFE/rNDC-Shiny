@@ -12,6 +12,12 @@ server_upload <- function(input, output, session, state, helpers) {
 
   created_observers <- reactiveVal(character(0))  # the pending GeoPackages that have import observers
 
+  # The folders where zip files were unpacked, for the GeoPackages that wait for a layer to be chosen. A plain
+  # environment, since the reactive values of a closed session cannot be read when the session ends.
+  unpacked <- new.env()
+  unpacked$dirs <- character(0)
+  session$onSessionEnded(function() unlink(unpacked$dirs, recursive = TRUE))
+
   assign_uploaded_colors_server <- function(up_sf) {
     assign_uploaded_colors(up_sf, drawn_features_val = drawn_features(), fixed_polys_val = fixed_polys())
   }
@@ -20,14 +26,17 @@ server_upload <- function(input, output, session, state, helpers) {
     files <- input$upload
     req(files)
 
-    start_id <- next_layer_id(fixed_polys(), uploaded_polys(), drawn_features())
 
     clear_project_selection_state()
     clear_map_polygons(except = c("uploaded"))
 
-    res <- process_uploaded_files(files, start_layer_id = start_id)
+    res <- process_uploaded_files(files)
     imported <- res$imported
     pending <- res$pending_gpkg
+    unpacked$dirs <- c(unpacked$dirs, res$kept_dirs)
+    if (length(res$notes) > 0) {
+      showNotification(paste(res$notes, collapse = " "), type = "warning", duration = 12)
+    }
     if (!is.null(imported) && nrow(imported) > max_upload_features) {
       showNotification(paste0("The upload has ", nrow(imported), " polygons: at most ", max_upload_features,
                               " are accepted. Split the file or remove polygons that you do not need."),
@@ -194,11 +203,14 @@ server_upload <- function(input, output, session, state, helpers) {
             return(NULL)
           }
 
-          poly_only <- sf_obj[sf::st_is(sf_obj, c("POLYGON", "MULTIPOLYGON")), , drop = FALSE]
-          if (nrow(poly_only) == 0) {
+          poly_only <- clean_polygons(sf_obj, paste0("Layer ", chosen_layer))
+          if (is.null(poly_only)) {
             showNotification(paste0("Layer ", chosen_layer, " does not contain polygon features."), type = "error")
             return(NULL)
           }
+          notes <- polygon_notes(poly_only)
+          if (length(notes) > 0) showNotification(paste(notes, collapse = " "), type = "warning", duration = 12)
+          if (nrow(poly_only) == 0) return(NULL)
 
           if (nrow(poly_only) > max_upload_features) {
             showNotification(paste0("Layer ", chosen_layer, " has ", nrow(poly_only), " polygons: at most ",
@@ -206,7 +218,6 @@ server_upload <- function(input, output, session, state, helpers) {
             return(NULL)
           }
 
-          poly_only <- sf::st_transform(poly_only, 4326)
           poly_only$source <- "uploaded"
           poly_only$pending_layer <- chosen_layer
           base_name <- paste0(p$name, " :: ", chosen_layer)

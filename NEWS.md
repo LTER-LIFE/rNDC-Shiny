@@ -6,8 +6,12 @@
 * Limits for polygons that users bring: datasets (Weather excepted) are only added for polygons up to 1000 km2 (`NDC_MAX_AREA_KM2`), and an upload may have at most 1000 polygons per file or layer. The panels say so.
 * A polygon whose WKT is too long for AgroDataCube (its server refuses URLs above about 8000 characters, i.e. about 300 vertices) is sent with 6 decimals and, if needed, simplified up to 1000 m; the message of the dataset tells how much. Before, such a request failed.
 
+* Uploaded and drawn polygons are checked: a polygon that crosses itself is repaired (a drawn one can; the toolbar allows it), z coordinates are dropped, and a polygon that cannot be repaired is left out. A file without a coordinate system (or with an "undefined" one, as a GeoPackage can have, which used to make the upload fail) is taken to be in WGS84, and the app says so. The notes are shown after the upload.
+* A zip file is not read when it has more than 200 files, unpacks to more than 500 MB, or has paths outside the archive. Files in folders of a zip are found.
+
 ## Fixes
 
+* Uploads no longer leave temporary folders in the shared temp directory: they are removed when the file has been read, or, for a zipped GeoPackage that waits for a layer to be chosen, when the session ends.
 * The features of an uploaded file are separate shapes: clicking one selects that polygon only (it used to select every feature of the file). The list of uploads shows one entry per file or layer with its number of features (it said 1), and "Remove" removes the whole upload.
 
 # rNDC.Shiny 0.5.1
