@@ -83,7 +83,7 @@ server_projects <- function(input, output, session, state, helpers) {
     # ---- LTER: pull the chosen class from the cached, classified collection ----
     if (startsWith(key, "lter:")) {
       this_class <- sub("^lter:", "", key)
-      lter_res <- get_lter_data()
+      lter_res <- project_lter_data()
       lter <- lter_res$data
       if (is.null(lter)) {
         showNotification(
@@ -100,11 +100,11 @@ server_projects <- function(input, output, session, state, helpers) {
       }
       poly <- dplyr::mutate(poly, layer_id = as.integer(dplyr::row_number()))
       # Unique sequential names per class, e.g. "Light on Nature_1", "Light on Nature_2", ...
-      poly <- assign_sequential_source_names(poly, base_name = this_class,
+      poly <- polygon_assign_names(poly, base_name = this_class,
                                              overview(), fixed_polys(), uploaded_polys(), drawn_features())
       # Add the WKT geometry text column used by downstream retrieval (Weather,
       # Soil map, AHN, Agricultural fields all read the polygon as WKT).
-      poly <- add_wkt_column(poly)
+      poly <- polygon_add_wkt(poly)
       render_fixed_polys(poly, fit = TRUE, show_hint = TRUE)
     }
   }, ignoreNULL = FALSE)
@@ -147,7 +147,7 @@ server_projects <- function(input, output, session, state, helpers) {
     # real progress indicator while it runs (a plain reactiveVal "loading"
     # message would not render until the observer returns, i.e. too late).
     res <- withProgress(
-      expr = fetch_snl_bbox(bbox),
+      expr = project_snl_fetch(bbox),
       message = "Loading SNL parcels for this view\u2026",
       value = 0.5
     )
@@ -169,10 +169,10 @@ server_projects <- function(input, output, session, state, helpers) {
     parcels <- res$data
     n <- nrow(parcels)
     parcels <- dplyr::mutate(parcels, layer_id = as.integer(dplyr::row_number()))
-    parcels <- assign_sequential_source_names(parcels, base_name = "SNL parcel",
+    parcels <- polygon_assign_names(parcels, base_name = "SNL parcel",
                                               overview(), fixed_polys(), uploaded_polys(), drawn_features())
     # Add the WKT geometry text column used by downstream retrieval.
-    parcels <- add_wkt_column(parcels)
+    parcels <- polygon_add_wkt(parcels)
     fixed_polys(parcels)
 
     leaflet::leafletProxy("map") %>%

@@ -134,12 +134,12 @@ server_map <- function(input, output, session, state, helpers) {
 
   observeEvent(input$map_draw_new_feature, {
     feat <- input$map_draw_new_feature
-    start_id <- next_layer_id(fixed_polys(), uploaded_polys(), drawn_features())
+    start_id <- polygon_next_id(fixed_polys(), uploaded_polys(), drawn_features())
 
     clear_project_selection_state()
     clear_map_polygons(except = c("drawn"))
 
-    poly_sf <- convert_drawn_to_sf(feat, start_layer_id = start_id)
+    poly_sf <- polygon_from_drawing(feat, start_layer_id = start_id)
     req(poly_sf)
     notes <- polygon_notes(poly_sf)
     if (length(notes) > 0) {
@@ -147,7 +147,7 @@ server_map <- function(input, output, session, state, helpers) {
     }
     req(nrow(poly_sf) > 0)
 
-    poly_sf <- assign_sequential_source_names(poly_sf, base_name = "Own polygon", overview(), fixed_polys(), uploaded_polys(), drawn_features())
+    poly_sf <- polygon_assign_names(poly_sf, base_name = "Own polygon", overview(), fixed_polys(), uploaded_polys(), drawn_features())
 
     if (is.null(drawn_features())) drawn_features(poly_sf) else drawn_features(dplyr::bind_rows(drawn_features(), poly_sf))
 
@@ -188,7 +188,7 @@ server_map <- function(input, output, session, state, helpers) {
     deleted_feats <- list()
     if (!is.null(deleted$features) && length(deleted$features) > 0) {
       for (f in deleted$features) {
-        sf_f <- convert_geojson_feature_to_sf(f)
+        sf_f <- polygon_from_geojson(f)
         if (!is.null(sf_f)) deleted_feats[[length(deleted_feats) + 1]] <- sf_f
       }
     }

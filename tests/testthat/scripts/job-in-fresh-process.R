@@ -1,11 +1,11 @@
-# Run by test-async.R in a separate R process: a job is sent to a fresh background process with the installed
+# Run by test-job_manager.R in a separate R process: a job is sent to a fresh background process with the installed
 # package, as the app does. It runs offline (a dataset without retrieval) and prints "JOB OK".
 # This is a script, and not code of the test itself, because what goes wrong depends on where it is created.
 
 suppressMessages(library(rNDC.Shiny))
 ns <- asNamespace("rNDC.Shiny")
 
-m <- ns$new_job_manager(max_workers = 1)
+m <- ns$job_manager(max_workers = 1)
 poly <- sf::st_sf(geometry = sf::st_sfc(sf::st_polygon(list(rbind(c(0, 0), c(1, 0), c(1, 1), c(0, 0)))), crs = 4326))
 ov <- tibble::tibble(dataset = "Vegetation structure", view = "Geodata", year = NA_integer_, polygon = "p",
                      wkt = sf::st_as_text(sf::st_geometry(poly)), polygon_sf = list(poly),
@@ -24,7 +24,7 @@ repeat {
 
 status <- ns$job_status(m, id)
 if (!identical(status$state, "done")) stop("the job did not finish: ", status$state, " ", status$error)
-stopifnot(identical(ns$read_progress(m$jobs[[id]]$progress_file)$value, 1))
+stopifnot(identical(ns$job_progress_read(m$jobs[[id]]$progress_file)$value, 1))
 out <- ns$job_collect(m, id)
 stopifnot(identical(out$value$messages, "Skipped: Vegetation structure is not wired to a retrieval endpoint yet."))
 cat("JOB OK\n")

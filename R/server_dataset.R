@@ -85,12 +85,12 @@ server_dataset <- function(input, output, session, state, helpers) {
     ds <- input$selected_dataset
 
     make_ds_tabset <- function(ds_name) {
-      tid <- make_tab_id(ds_name)
+      tid <- dataset_tab_id(ds_name)
       header_text <- paste0("Configure data request - ", ds_name)
       header_tag <- tags$h4(header_text, style = "color: #1f5a8a; margin-top: 6px; margin-bottom: 8px;")
-      tab_names <- tabs_for_dataset(ds_name)
+      tab_names <- dataset_tabs(ds_name)
       tab_panels <- lapply(tab_names, function(tn) {
-        tabPanel(title = tn, value = tn, uiOutput(make_target_id(ds_name, tn)))
+        tabPanel(title = tn, value = tn, uiOutput(dataset_target_id(ds_name, tn)))
       })
       tagList(
         header_tag,
@@ -115,7 +115,7 @@ server_dataset <- function(input, output, session, state, helpers) {
       tagList(tags$div(class = "dataset-controls", numericInput("selected_year", "Select year:", value = last_year, min = fields_min_year, max = last_year)))
 
     } else if (ds == "Nitrogen") {
-      nitrogen_years <- get_nitrogen_years(state$mytoken)
+      nitrogen_years <- stac_nitrogen_years(state$mytoken)
       tagList(tags$div(
         class = "dataset-controls",
         selectInput("nitrogen_year", "Select year:", choices = nitrogen_years,
@@ -126,7 +126,7 @@ server_dataset <- function(input, output, session, state, helpers) {
       ))
 
     } else if (ds == "Land Use") {
-      years <- get_landuse_years(state$mytoken)
+      years <- stac_landuse_years(state$mytoken)
       default <- as.character(landuse_default_year)
       tagList(tags$div(class = "dataset-controls",
                        selectInput("landuse_year", "Select year:", choices = years,
@@ -174,15 +174,15 @@ server_dataset <- function(input, output, session, state, helpers) {
   }
 
   for (ds_name in all_dataset_names) {
-    for (tab_nm in tabs_for_dataset(ds_name)) {
+    for (tab_nm in dataset_tabs(ds_name)) {
       local({
         dsn <- ds_name
         tab_name <- tab_nm
-        tgt <- make_target_id(dsn, tab_name)
-        tab_input_id <- make_tab_id(dsn)
+        tgt <- dataset_target_id(dsn, tab_name)
+        tab_input_id <- dataset_tab_id(dsn)
         output[[tgt]] <- renderUI({
           if (is.null(input$selected_dataset) || input$selected_dataset != dsn) return(NULL)
-          current_tab <- if (!is.null(input[[tab_input_id]])) input[[tab_input_id]] else default_tab_for_dataset(dsn)
+          current_tab <- if (!is.null(input[[tab_input_id]])) input[[tab_input_id]] else dataset_default_tab(dsn)
           if (is.null(current_tab) || tolower(as.character(current_tab)) != tolower(tab_name)) return(NULL)
           build_controls_for(dsn, tab_name)
         })
@@ -267,8 +267,8 @@ server_dataset <- function(input, output, session, state, helpers) {
     }
 
     ds_label <- input$selected_dataset
-    tab_input_id <- make_tab_id(ds_label)
-    default_tab <- default_tab_for_dataset(input$selected_dataset)
+    tab_input_id <- dataset_tab_id(ds_label)
+    default_tab <- dataset_default_tab(input$selected_dataset)
     cur_tab_val <- if (!is.null(isolate(input[[tab_input_id]]))) isolate(input[[tab_input_id]]) else default_tab
     view_label <- if (tolower(as.character(cur_tab_val)) == "statistics") "Statistics" else "Geodata"
 
@@ -276,8 +276,8 @@ server_dataset <- function(input, output, session, state, helpers) {
     new_rows <- list()
 
     # polygons above the area limit (not for Weather, which uses the centroid)
-    too_large <- if (ds_label %in% area_limited_datasets()) polygons_too_large(sel) else character(0)
-    if (length(too_large) > 0) showNotification(too_large_message(too_large), type = "error", duration = 10)
+    too_large <- if (ds_label %in% polygon_limited_datasets()) polygon_too_large(sel) else character(0)
+    if (length(too_large) > 0) showNotification(polygon_too_large_message(too_large), type = "error", duration = 10)
 
     for (i in seq_len(nrow(sel))) {
       poly <- sel[i, , drop = FALSE]
@@ -317,18 +317,18 @@ server_dataset <- function(input, output, session, state, helpers) {
     if (length(new_rows) > 0) {
       # where the check found no data, say so (the dataset is added anyway: the check does not know everything)
       found <- availability_of(isolate(state$availability()), ds_label)
-      if (!is.null(found) && found$status == "no") showNotification(no_data_warning(found), type = "warning", duration = 10)
+      if (!is.null(found) && found$status == "no") showNotification(availability_no_data_warning(found), type = "warning", duration = 10)
       added <- dplyr::bind_rows(new_rows)
       # the whole overview is retrieved at once, so it is the total that counts
-      seconds <- sum(estimate_row_seconds(ov$dataset, ov$view, ov$date_from, ov$date_to),
-                     estimate_row_seconds(added$dataset, added$view, added$date_from, added$date_to))
+      seconds <- sum(retrieve_estimate_seconds(ov$dataset, ov$view, ov$date_from, ov$date_to),
+                     retrieve_estimate_seconds(added$dataset, added$view, added$date_from, added$date_to))
       if (seconds > max_request_seconds()) {
-        showNotification(too_long_retrieval_message(seconds), type = "error", duration = 12)
+        showNotification(retrieve_too_long_message(seconds), type = "error", duration = 12)
         return(NULL)
       }
       overview(dplyr::bind_rows(ov, added))
       if (seconds > warn_request_seconds) {
-        showNotification(long_retrieval_warning(seconds), type = "warning", duration = 10)
+        showNotification(retrieve_long_warning(seconds), type = "warning", duration = 10)
       }
     } else if (length(too_large) == 0) {
       showNotification("Selected dataset(s) already present for the selected polygon(s) with the same settings.", type = "message")

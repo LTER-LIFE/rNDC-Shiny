@@ -11,7 +11,7 @@ server_overview <- function(input, output, session, state, helpers) {
     }
 
     display_dates <- vapply(seq_len(nrow(ov)), function(i) {
-      format_date_label(ov$year[i], ov$date_from[i], ov$date_to[i])
+      export_date_label(ov$year[i], ov$date_from[i], ov$date_to[i])
     }, FUN.VALUE = character(1), USE.NAMES = FALSE)
 
     tags$table(
@@ -58,14 +58,14 @@ server_overview <- function(input, output, session, state, helpers) {
     }
 
     new_ov <- ov[-idx, , drop = FALSE]
-    if (nrow(new_ov) == 0) overview(empty_overview()) else overview(new_ov)
+    if (nrow(new_ov) == 0) overview(state_empty_overview()) else overview(new_ov)
     update_selected_highlights()
     showNotification("Row removed from overview.", type = "message")
   }, ignoreInit = TRUE)
 
   observeEvent(input$clear_overview, {
     cur_sel <- selected_polygons()
-    overview(empty_overview())
+    overview(state_empty_overview())
     if (!is.null(cur_sel) && nrow(cur_sel) > 0) selected_polygons(cur_sel)
     update_selected_highlights()
     showNotification("Overview cleared", type = "message")

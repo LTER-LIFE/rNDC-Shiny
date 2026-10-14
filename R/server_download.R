@@ -12,7 +12,7 @@ server_download <- function(input, output, session, state, helpers) {
   # only there while there is an overview; until then, and in the tests, the answer is yes.
   include_parameters <- function() !isFALSE(isolate(input$include_parameters))
 
-  # Retrieve the datasets in the overview (see R/retrieval.R). With `save_files`, the data are also written
+  # Retrieve the datasets in the overview (see R/retrieve_row.R). With `save_files`, the data are also written
   # to a folder (and zipped when a `zipfile` is given); otherwise they are only returned.
   retrieve_and_save <- function(zipfile = NULL, save_files = TRUE, workdir = NULL) {
     ov <- overview()
@@ -22,7 +22,7 @@ server_download <- function(input, output, session, state, helpers) {
     out <- withProgress(
       message = "Retrieving datasets...", value = 0,
       retrieve_and_package(ov, zipfile, save_files, workdir, ndc_token = mytoken, adc_token = agro_token,
-                           progress = report_progress, parameters = include_parameters())
+                           progress = retrieve_report_progress, parameters = include_parameters())
     )
 
     # Show what happened to each dataset ("Retrieved: ...", "Failed: ... - reason") in the messages
@@ -36,7 +36,7 @@ server_download <- function(input, output, session, state, helpers) {
   current <- new.env()
 
   # Run a retrieval and hand its result to `on_done`. In the app's own process the result is there at once; in
-  # the asynchronous mode (see R/async.R and R/jobs.R) the retrieval runs in a background process, the app stays
+  # the asynchronous mode (see R/job_setup.R and R/job_manager.R) the retrieval runs in a background process, the app stays
   # free for everyone, and `on_done` is called when it is finished. The job waits in a queue when all workers
   # are busy, and the user can cancel it. A session retrieves one overview at a time. If the user leaves
   # meanwhile, the job is cancelled, or `on_abandoned` is called with its result (to remove what was made).
@@ -46,7 +46,7 @@ server_download <- function(input, output, session, state, helpers) {
       showNotification("A retrieval is already running: wait until it is done.", type = "warning")
       return(invisible(NULL))
     }
-    if (!async_enabled()) {
+    if (!job_async_enabled()) {
       on_done(retrieve_and_save(zipfile = zipfile, save_files = save_files))
       return(invisible(NULL))
     }
@@ -74,9 +74,9 @@ server_download <- function(input, output, session, state, helpers) {
     current$jobs <- jobs
     current$id <- id
     current$on_abandoned <- on_abandoned
-    watch_job(jobs, id, session,
+    download_watch_job(jobs, id, session,
               on_done = function(res) {
-                res$datasets <- lapply(res$datasets, unpack_result)
+                res$datasets <- lapply(res$datasets, retrieve_unpack)
                 download_msgs(res$messages)
                 on_done(res)
               },
@@ -96,7 +96,7 @@ server_download <- function(input, output, session, state, helpers) {
 
   # The user cancels the retrieval that waits or runs
   observeEvent(input$cancel_retrieval, {
-    if (!is.null(current$id)) job_cancel(current$jobs, current$id)  # watch_job() notices and cleans up
+    if (!is.null(current$id)) job_cancel(current$jobs, current$id)  # download_watch_job() notices and cleans up
   })
 
   # The user leaves: stop the job (a waiting or running one is cancelled, and what it made removed), or, if it
@@ -206,4 +206,48 @@ server_download <- function(input, output, session, state, helpers) {
   })
 
   invisible(list(retrieve_and_save = retrieve_and_save))
+}
+
+# ---- Following a background job in the page ----
+
+# What the page says to a user whose job waits
+download_queue_text <- function(status) {
+  paste0("Position ", status$position, " of ", status$queued, " in the queue. It starts when a worker is free.")
+}
+
+# Follow the job `id` of the manager `jobs` in the page of `session`: a progress bar that says where the job is
+# (waiting in the queue, or the progress it reports), and, when the job ends, one of the callbacks:
+# `on_done(result)`, `on_failed(error)` or `on_cancelled()`. `finish()` is called first, in all three cases.
+# The manager is asked every half second; this is also what starts waiting jobs and notices finished ones.
+download_watch_job <- function(jobs, id, session, on_done, on_failed, on_cancelled, finish, interval = 500) {
+  progress <- shiny::Progress$new(session, min = 0, max = 1)
+  progress$set(value = 0, message = "Retrieving datasets...", detail = "Starting...")
+  observer <- NULL
+  end <- function() {
+    observer$destroy()
+    tryCatch(progress$close(), error = function(e) NULL)  # e.g. the session has ended
+    finish()
+  }
+  observer <- shiny::observe({
+    shiny::invalidateLater(interval, session)
+    job_tick(jobs)
+    status <- job_status(jobs, id)
+    shiny::isolate({
+      state <- if (is.null(status)) "cancelled" else status$state
+      if (state == "queued") {
+        progress$set(value = 0, message = "Waiting in the queue", detail = download_queue_text(status))
+      } else if (state == "running") {
+        p <- status$progress
+        progress$set(value = if (is.null(p)) 0 else p$value, message = "Retrieving datasets...",
+                     detail = if (is.null(p)) "Starting..." else p$detail)
+      } else {
+        end()
+        out <- job_collect(jobs, id)
+        if (state == "done") on_done(out$value)
+        else if (state == "failed") on_failed(out$error)
+        else on_cancelled()
+      }
+    })
+  })
+  invisible(observer)
 }

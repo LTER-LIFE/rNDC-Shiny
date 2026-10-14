@@ -24,6 +24,10 @@
 * Uploads no longer leave temporary folders in the shared temp directory: they are removed when the file has been read, or, for a zipped GeoPackage that waits for a layer to be chosen, when the session ends.
 * The features of an uploaded file are separate shapes: clicking one selects that polygon only (it used to select every feature of the file). The list of uploads shows one entry per file or layer with its number of features (it said 1), and "Remove" removes the whole upload.
 
+## Internal
+
+* The files and functions are arranged like those of rNDC: the name starts with the layer (`job_*` for the background processes, `retrieve_*` and `export_*` for retrieving and writing, `polygon_*`, `project_*`, `stac_*`, `availability_*`, `state_*`, `map_helpers_*`, `dataset_*`), the long files were split (`retrieval.R`, `polygons.R`, `async.R`, `jobs.R`, `lookups.R`), the very small ones joined to a neighbour of their layer, and each test file is named after the R file that it tests. Nothing that is exported changed (`ndc_gui()` and `ndc_app()`); see "Architecture" in CLAUDE.md for the layout.
+
 # rNDC.Shiny 0.5.1
 
 ## New

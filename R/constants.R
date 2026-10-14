@@ -1,5 +1,3 @@
-# Constants: dataset menu, tab layout and STAC collection settings.
-
 available_datasets <- list(
   "Atmosphere" = c("Weather", "Nitrogen"),
   "Biosphere" = c("NDVI", "Vegetation structure"),
@@ -10,18 +8,18 @@ available_datasets <- list(
 
 all_dataset_names <- unique(unlist(available_datasets))
 
-make_tab_id <- function(name) paste0(gsub("[^a-z0-9]+", "_", tolower(name)), "_tab")
+dataset_tab_id <- function(name) paste0(gsub("[^a-z0-9]+", "_", tolower(name)), "_tab")
 
-make_target_id <- function(name, tab) paste0("tab_target_", gsub("[^a-z0-9]+", "_", tolower(name)), "_", tolower(tab))
+dataset_target_id <- function(name, tab) paste0("tab_target_", gsub("[^a-z0-9]+", "_", tolower(name)), "_", tolower(tab))
 
 # Which tab(s) each dataset exposes. NDVI has both Statistics + Geodata; others one.
-tabs_for_dataset <- function(name) {
+dataset_tabs <- function(name) {
   if (identical(name, "NDVI")) return(c("Statistics", "Geodata"))
   if (name %in% c("Weather", "AHN")) return("Statistics")
   "Geodata"
 }
 
-default_tab_for_dataset <- function(name) tabs_for_dataset(name)[1]
+dataset_default_tab <- function(name) dataset_tabs(name)[1]
 
 # Collection IDs in the STAC catalogue
 ndc_lter_collection <- "lter"
@@ -41,15 +39,16 @@ snl_fetch_limit <- 1000L
 # collection of a polygon from its name and to build the project menu.
 lter_class_patterns <- c("Light on Nature" = "^Lantaarnpaal", "Loobos" = "^Loobos$",
                          "Nestboxes" = "Nestkast", "Nutnet" = "^Nutnet$")
+
 lter_class_levels <- names(lter_class_patterns)
 
 # Largest upload (MB). Shiny's own limit is 5 MB, which is too small for many shapefiles and GeoPackages.
 # Set another with the environment variable NDC_MAX_UPLOAD_MB, or the option `shiny.maxRequestSize` (in bytes).
 default_upload_mb <- 100
-max_upload_mb <- function() getOption("shiny.maxRequestSize", 5 * 1024^2) / 1024^2
 
 # Weather is requested in chunks of this many days, with a pause (in seconds) between the requests
 weather_chunk_days <- 200L
+
 weather_chunk_sleep <- 0.5
 
 # How long the requests take, measured on a normal connection: seconds per Weather request (one chunk, with
@@ -59,8 +58,8 @@ weather_chunk_sleep <- 0.5
 # variable NDC_MAX_REQUEST_SECONDS; the default is 300 seconds, or 900 when retrievals run in the background,
 # where they hold nobody up).
 request_seconds <- c(weather_chunk = 0.9, ndvi_day = 0.25)
+
 warn_request_seconds <- 60
-max_request_seconds <- function() getOption("rNDC.Shiny.max_request_seconds", if (async_enabled()) 900 else 300)
 
 # Earliest data of the sources. They bound what the date and year inputs offer. They are the coverage that rNDC
 # states for the datasets of the AgroDataCube and GroenMonitor (rNDC::ndc_external_datasets(), where they are
@@ -69,17 +68,22 @@ external_start <- function(id) {
   ext <- rNDC::ndc_external_datasets()
   ext$start[ext$id == id]
 }
+
 # KNMI daily data; the closest station may start later (then: "no data")
 delayedAssign("weather_min_date", external_start("weather"))
+
 # the GroenMonitor daily NDVI starts on 2017-05-26: the inputs are by month
 delayedAssign("ndvi_min_month", as.Date(format(external_start("groenmonitor-ndvi"), "%Y-%m-01")))
+
 # AgroDataCube field geometries (2008 has none)
 delayedAssign("fields_min_year", as.integer(format(external_start("agricultural-fields"), "%Y")))
 
 # Defaults of the rasters, taken from rNDC (>= 0.5.1) and evaluated on first use: the STAC collection of the
 # Land Use rasters, its default year, and the nitrogen layers.
 delayedAssign("ndc_landuse_collection", rNDC::ndc_landuse_collection())
+
 delayedAssign("landuse_default_year", rNDC::ndc_landuse_default_year())
+
 delayedAssign("nitrogen_layer_choices", rNDC::ndc_nitrogen_layers())
 
 # Datasets that come from AgroDataCube and therefore need an ADC token.

@@ -19,7 +19,7 @@ server_upload <- function(input, output, session, state, helpers) {
   session$onSessionEnded(function() unlink(unpacked$dirs, recursive = TRUE))
 
   assign_uploaded_colors_server <- function(up_sf) {
-    assign_uploaded_colors(up_sf, drawn_features_val = drawn_features(), fixed_polys_val = fixed_polys())
+    polygon_upload_colors(up_sf, drawn_features_val = drawn_features(), fixed_polys_val = fixed_polys())
   }
 
   observeEvent(input$upload, {
@@ -30,7 +30,7 @@ server_upload <- function(input, output, session, state, helpers) {
     clear_project_selection_state()
     clear_map_polygons(except = c("uploaded"))
 
-    res <- process_uploaded_files(files)
+    res <- polygon_process_upload(files)
     imported <- res$imported
     pending <- res$pending_gpkg
     unpacked$dirs <- c(unpacked$dirs, res$kept_dirs)
@@ -46,19 +46,19 @@ server_upload <- function(input, output, session, state, helpers) {
 
     if (!is.null(imported) && nrow(imported) > 0) {
       base_name <- if (!is.null(files$name) && length(files$name) >= 1) files$name[1] else "Uploaded"
-      imported <- number_uploaded(imported, uploaded_polys())
+      imported <- polygon_number_uploaded(imported, uploaded_polys())
       imported$upload_name <- base_name
       imported$wkt <- sf::st_as_text(sf::st_geometry(imported))
       imported$source <- "uploaded"
       imported$pending_pid <- NA_character_
       imported$pending_layer <- NA_character_
-      imported <- assign_sequential_source_names(imported, base_name = base_name, overview(), fixed_polys(), uploaded_polys(), drawn_features())
+      imported <- polygon_assign_names(imported, base_name = base_name, overview(), fixed_polys(), uploaded_polys(), drawn_features())
 
       tmp_up <- if (is.null(uploaded_polys())) imported else dplyr::bind_rows(uploaded_polys(), imported)
       tmp_up <- assign_uploaded_colors_server(tmp_up)
       uploaded_polys(tmp_up)
 
-      zoom_to_sf(imported)
+      polygon_zoom_to(imported)
     }
 
     if (length(pending) > 0) {
@@ -203,7 +203,7 @@ server_upload <- function(input, output, session, state, helpers) {
             return(NULL)
           }
 
-          poly_only <- clean_polygons(sf_obj, paste0("Layer ", chosen_layer))
+          poly_only <- polygon_clean(sf_obj, paste0("Layer ", chosen_layer))
           if (is.null(poly_only)) {
             showNotification(paste0("Layer ", chosen_layer, " does not contain polygon features."), type = "error")
             return(NULL)
@@ -221,11 +221,11 @@ server_upload <- function(input, output, session, state, helpers) {
           poly_only$source <- "uploaded"
           poly_only$pending_layer <- chosen_layer
           base_name <- paste0(p$name, " :: ", chosen_layer)
-          poly_only <- number_uploaded(poly_only, uploaded_polys())
+          poly_only <- polygon_number_uploaded(poly_only, uploaded_polys())
           poly_only$upload_name <- base_name
           poly_only$wkt <- sf::st_as_text(sf::st_geometry(poly_only))
           poly_only$pending_pid <- my_pid
-          poly_only <- assign_sequential_source_names(poly_only, base_name = base_name, overview(), fixed_polys(), uploaded_polys(), drawn_features())
+          poly_only <- polygon_assign_names(poly_only, base_name = base_name, overview(), fixed_polys(), uploaded_polys(), drawn_features())
 
           tmp_up <- if (is.null(uploaded_polys())) poly_only else dplyr::bind_rows(uploaded_polys(), poly_only)
           tmp_up <- assign_uploaded_colors_server(tmp_up)
@@ -246,7 +246,7 @@ server_upload <- function(input, output, session, state, helpers) {
               if (!is.null(uploaded_polys())) leaflet::addPolygons(., data = uploaded_polys(), group = "uploaded", color = ~color, fillColor = ~color, fillOpacity = 0.25, weight = 2, layerId = ~layer_id, label = ~source_name, labelOptions = leaflet::labelOptions(direction = "auto")) else .
             }
 
-          zoom_to_sf(poly_only)
+          polygon_zoom_to(poly_only)
           showNotification(paste0("Imported layer '", chosen_layer, "' from ", p$name), type = "message", duration = 5)
         }, ignoreNULL = TRUE)
       })

@@ -27,7 +27,7 @@ server_availability <- function(input, output, session, state, helpers) {
     if (is.null(sel) || nrow(sel) == 0) return(NULL)
     years <- list("Agricultural fields" = input$selected_year, "Land Use" = input$landuse_year,
                   "Nitrogen" = input$nitrogen_year)
-    tryCatch(check_area_availability(sel, mytoken, agro_token, years, weather_max_km()), error = function(e) NULL)
+    tryCatch(availability_check(sel, mytoken, agro_token, years, weather_max_km()), error = function(e) NULL)
   }) %>% debounce(400)
 
   observe({

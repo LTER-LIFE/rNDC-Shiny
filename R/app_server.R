@@ -2,10 +2,10 @@
 
 app_server <- function(input, output, session) {
   # Tokens are read when a session starts (ndc_setup() has already checked them).
-  state <- create_state(Sys.getenv("NDC_TOKEN"), Sys.getenv("ADC_TOKEN"))
+  state <- state_create(Sys.getenv("NDC_TOKEN"), Sys.getenv("ADC_TOKEN"))
   # The state is also available by name (e.g. `overview()`): the tests reach it that way.
   list2env(state, environment())
-  helpers <- create_map_helpers(session, state)
+  helpers <- map_helpers_create(session, state)
 
   server_availability(input, output, session, state, helpers)
   server_catalogue(input, output, session, state, helpers)

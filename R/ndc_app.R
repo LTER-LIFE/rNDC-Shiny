@@ -26,7 +26,7 @@
 
 ndc_app <- function() {
   ndc_setup()
-  setup_async()
+  job_setup_async()
   shiny::addResourcePath("ndc-www", system.file("app", "www", package = "rNDC.Shiny"))
   shiny::shinyApp(app_ui(), app_server, onStart = function() {
     shiny::onStop(function() job_shutdown(ndc_jobs()))
@@ -59,3 +59,5 @@ ndc_setup <- function() {
   if (!is.na(max_seconds) && max_seconds > 0) options(rNDC.Shiny.max_request_seconds = max_seconds)
   invisible(TRUE)
 }
+
+max_upload_mb <- function() getOption("shiny.maxRequestSize", 5 * 1024^2) / 1024^2

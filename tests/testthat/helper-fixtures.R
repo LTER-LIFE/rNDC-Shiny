@@ -175,7 +175,7 @@ local_clean_cache <- function(env = parent.frame()) {
   withr::defer(clear(), envir = env)
 }
 
-# ---- background retrieval (R/async.R, R/jobs.R) ----
+# ---- background retrieval (R/job_manager.R, R/job_setup.R) ----
 
 # A job manager without processes, for tests. `rec` records what happened: `$started` (the ids of the jobs that
 # were started), `$killed`, and `$finished`: set `rec$finished[[id]] <- TRUE` to end a job. With `run = TRUE` a job
@@ -199,14 +199,14 @@ fake_manager <- function(workers = 1, max_queue = Inf, run = FALSE) {
       error = function() "stderr of the process"
     )
   }
-  list(manager = new_job_manager(workers, max_queue, start = start), rec = rec)
+  list(manager = job_manager(workers, max_queue, start = start), rec = rec)
 }
 
 # End the job `id` of a fake manager, as the process would: with a value saved, or an error, or nothing
 finish_fake_job <- function(fake, id, value = NULL, error = NULL, crash = FALSE) {
   job <- fake$manager$jobs[[id]]
   if (!crash) {
-    save_job_outcome(if (is.null(error)) list(ok = TRUE, value = value) else list(ok = FALSE, error = error),
+    job_save_outcome(if (is.null(error)) list(ok = TRUE, value = value) else list(ok = FALSE, error = error),
                      job$result_file, job$status_file)
   }
   fake$rec$finished[[id]] <- TRUE
@@ -237,7 +237,7 @@ local_jobs <- function(manager, env = parent.frame()) {
   testthat::local_mocked_bindings(ndc_jobs = function() manager, .env = env)
 }
 
-# ---- uploads (test-upload.R, test-polygons.R) ----
+# ---- uploads (test-server_upload.R, test-polygon_upload.R) ----
 
 upload_files <- function(name, path) data.frame(name = name, size = 1L, type = "", datapath = path)
 
@@ -265,4 +265,14 @@ with_overview <- function(rows, code) {
     overview(dplyr::bind_rows(rows))
     eval(code, list2env(list(zip = tempfile(fileext = ".zip")), parent = environment()))
   })
+}
+
+# A 2 x 2 raster (the data of the mocked raster downloads)
+raster <- function() terra::rast(nrows = 2, ncols = 2, vals = 1:4)
+
+# Three rows of the overview (for the tests of the overview and the download)
+three_rows <- function() {
+  dplyr::bind_rows(overview_row("AHN", "Statistics"),
+                   overview_row("Soil map"),
+                   overview_row("Land Use", year = 2024L, name = "Other polygon"))
 }

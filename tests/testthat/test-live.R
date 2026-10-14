@@ -18,7 +18,7 @@ test_that("the collections used by the app exist", {
 test_that("the LTER projects are found and classified", {
   skip_unless_live()
   local_clean_cache()
-  res <- get_lter_data()
+  res <- project_lter_data()
   expect_null(res$error)
   expect_setequal(stats::na.omit(unique(res$data$project_class)), lter_class_levels)
   expect_true("ndc_id" %in% names(res$data))
@@ -29,7 +29,7 @@ test_that("the LTER projects cover every study site of rNDC", {
   # so with NDVI statistics). If a site is added to rNDC and not to the lter collection, this fails.
   skip_unless_live()
   local_clean_cache()
-  lter <- get_lter_data()$data
+  lter <- project_lter_data()$data
   sites <- lapply(rNDC::ndc_sites(), function(layer) rNDC::ndc_sites(layer))
   expect_equal(nrow(lter), sum(vapply(sites, nrow, 1L)))
   for (site in sites) {
@@ -40,7 +40,7 @@ test_that("the LTER projects cover every study site of rNDC", {
 
 test_that("SNL parcels can be fetched for a map view", {
   skip_unless_live()
-  res <- fetch_snl_bbox(c(5.75, 52.05, 5.76, 52.06))
+  res <- project_snl_fetch(c(5.75, 52.05, 5.76, 52.06))
   expect_equal(res$status, "ok")
   expect_true(all(c("ndc_id", "name") %in% names(res$data)))
 })
@@ -48,9 +48,9 @@ test_that("SNL parcels can be fetched for a map view", {
 test_that("NDVI statistics belong to the selected LTER feature only", {
   skip_unless_live()
   local_clean_cache()
-  lter <- get_lter_data()$data
-  poly <- add_wkt_column(lter[lter$project_class == "Loobos", ][1, ])
-  res <- fetch_ndvi_stats_monthly(poly, "ndvi-lter", as.Date("2024-05-01"), as.Date("2024-07-31"))
+  lter <- project_lter_data()$data
+  poly <- polygon_add_wkt(lter[lter$project_class == "Loobos", ][1, ])
+  res <- project_ndvi_stats(poly, "ndvi-lter", as.Date("2024-05-01"), as.Date("2024-07-31"))
   expect_equal(res$status, "ok")
   expect_equal(anyDuplicated(res$data$month), 0)
   expect_true(all(res$data$ndvi_mean > -1 & res$data$ndvi_mean < 1))
@@ -59,7 +59,7 @@ test_that("NDVI statistics belong to the selected LTER feature only", {
 test_that("the nitrogen years are available", {
   skip_unless_live()
   local_clean_cache()
-  expect_true(all(c("2024", "2025") %in% get_nitrogen_years()))
+  expect_true(all(c("2024", "2025") %in% stac_nitrogen_years()))
 })
 
 test_that("AgroDataCube results are fetched completely", {
@@ -96,11 +96,11 @@ test_that("the availability check finds data in the Netherlands and none abroad"
     sf::st_sf(source_name = name, geometry = geom)
   }
   years <- list("Agricultural fields" = 2023, "Land Use" = "2024", "Nitrogen" = "2024")
-  nl <- check_area_availability(square(5.66, 51.99, "Own polygon_1"), Sys.getenv("NDC_TOKEN"), Sys.getenv("ADC_TOKEN"), years)
+  nl <- availability_check(square(5.66, 51.99, "Own polygon_1"), Sys.getenv("NDC_TOKEN"), Sys.getenv("ADC_TOKEN"), years)
   yes <- c("Weather", "Soil map", "AHN", "Agricultural fields", "Land Use", "Nitrogen", "NDVI")
   expect_equal(nl$status[match(yes, nl$dataset)], rep("yes", length(yes)), info = paste(nl$detail, collapse = " | "))
 
-  abroad <- check_area_availability(square(4.6, 50.6, "Own polygon_1"), Sys.getenv("NDC_TOKEN"), Sys.getenv("ADC_TOKEN"), years)
+  abroad <- availability_check(square(4.6, 50.6, "Own polygon_1"), Sys.getenv("NDC_TOKEN"), Sys.getenv("ADC_TOKEN"), years)
   no <- c("Soil map", "AHN", "Agricultural fields", "Land Use", "Nitrogen", "NDVI")
   expect_equal(abroad$status[match(no, abroad$dataset)], rep("no", length(no)), info = paste(abroad$detail, collapse = " | "))
 })
@@ -121,7 +121,7 @@ test_that("there is data at the earliest dates and years that the app offers", {
 test_that("the land use years come from the NatureDataCube", {
   skip_unless_live()
   local_clean_cache()
-  expect_true(as.character(landuse_default_year) %in% get_landuse_years())
+  expect_true(as.character(landuse_default_year) %in% stac_landuse_years())
 })
 
 test_that("the availability check finds raster items for a place in the Netherlands, and none elsewhere", {
@@ -132,8 +132,8 @@ test_that("the availability check finds raster items for a place in the Netherla
   elsewhere <- sf::st_geometry(sf::st_as_sf(sf::st_as_sfc(sf::st_bbox(
     c(xmin = -0.2, ymin = 51.4, xmax = -0.1, ymax = 51.5), crs = sf::st_crs(4326)))))  # London
 
-  expect_gt(count_items(ndc_landuse_collection, here), 0)
-  expect_equal(count_items(ndc_landuse_collection, elsewhere), 0)
+  expect_gt(stac_count_items(ndc_landuse_collection, here), 0)
+  expect_equal(stac_count_items(ndc_landuse_collection, elsewhere), 0)
 
   # one search for all raster collections
   table <- rNDC::stac_availability(c(ndc_landuse_collection, nitrogen_layer_choices), here, Sys.getenv("NDC_TOKEN"))

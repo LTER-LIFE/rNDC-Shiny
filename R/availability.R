@@ -17,14 +17,14 @@ availability_row <- function(dataset, status, detail = "") {
 }
 
 # Compute `compute()` once per `key`: cached for all sessions. A NULL result (a failed request) is not cached.
-cached_check <- function(key, compute) {
+availability_cached <- function(key, compute) {
   value <- cache_get(key)
   if (is.null(value)) value <- cache_set(key, tryCatch(compute(), error = function(e) NULL))
   value
 }
 
 # The outline of the Netherlands, in the Dutch grid (bundled with rNDC), read once per process; NULL if it cannot be read
-netherlands_outline <- local({
+availability_nl_outline <- local({
   outline <- NULL
   function() {
     if (is.null(outline)) outline <<- tryCatch(rNDC::ndc_netherlands(), error = function(e) NULL)
@@ -36,7 +36,7 @@ netherlands_outline <- local({
 
 # AgroDataCube: does the request for `option` return a feature for the area? A request with the polygon
 # `geometry` (an sfc) as `adc_geometry()` shortens it for the URL. NULL if the request fails.
-adc_has_features <- function(option, geometry, extra, token, test = function(features) length(features) > 0) {
+availability_adc_features <- function(option, geometry, extra, token, test = function(features) length(features) > 0) {
   wkt <- sf::st_as_text(geometry)
   row <- tibble::tibble(wkt = wkt, polygon_sf = list(sf::st_sf(geometry = geometry)))
   wkt <- adc_geometry(row)$wkt
@@ -50,10 +50,10 @@ adc_has_features <- function(option, geometry, extra, token, test = function(fea
 }
 
 # a status from a TRUE/FALSE, or NA/NULL (the request failed)
-status_of <- function(found) if (is.null(found) || is.na(found)) "unknown" else if (isTRUE(found)) "yes" else "no"
+availability_status_of <- function(found) if (is.null(found) || is.na(found)) "unknown" else if (isTRUE(found)) "yes" else "no"
 
 availability_weather <- function(geometry, key, token, max_km = weather_max_station_km) {
-  distance <- cached_check(cache_key("avail", "weather", key), function() {
+  distance <- availability_cached(cache_key("avail", "weather", key), function() {
     min(rNDC::adc_weather_station(sf::st_as_text(geometry), token = token)$distances) / 1000
   })
   if (is.null(distance)) return(list(status = "unknown", detail = "Could not check for a weather station."))
@@ -67,9 +67,9 @@ availability_weather <- function(geometry, key, token, max_km = weather_max_stat
 }
 
 availability_soil <- function(geometry, key, token) {
-  found <- cached_check(cache_key("avail", "soil", key),
-                        function() adc_has_features("Soiltypes", geometry, NULL, token))
-  status <- status_of(found)
+  found <- availability_cached(cache_key("avail", "soil", key),
+                        function() availability_adc_features("Soiltypes", geometry, NULL, token))
+  status <- availability_status_of(found)
   list(status = status, detail = switch(status,
     yes = "Soil map data is available for the selected area.",
     no = "No Soil map data found for the selected area.",
@@ -79,9 +79,9 @@ availability_soil <- function(geometry, key, token) {
 availability_ahn <- function(geometry, key, token) {
   # AHN answers with one feature for any area; without elevation data its properties are empty
   has_values <- function(features) length(features) > 0 && length(Filter(Negate(is.null), features[[1]]$properties)) > 0
-  found <- cached_check(cache_key("avail", "ahn", key),
-                        function() adc_has_features("AHN", geometry, NULL, token, test = has_values))
-  status <- status_of(found)
+  found <- availability_cached(cache_key("avail", "ahn", key),
+                        function() availability_adc_features("AHN", geometry, NULL, token, test = has_values))
+  status <- availability_status_of(found)
   list(status = status, detail = switch(status,
     yes = "Elevation (AHN) data is available for the selected area.",
     no = "No elevation (AHN) data found for the selected area.",
@@ -92,9 +92,9 @@ availability_fields <- function(geometry, key, token, year) {
   if (is.null(year) || is.na(suppressWarnings(as.integer(year)))) {
     return(list(status = "unknown", detail = "Choose a year to check for Agricultural fields."))
   }
-  found <- cached_check(cache_key("avail", "fields", key, year),
-                        function() adc_has_features("Fields", geometry, c(year = as.character(year)), token))
-  status <- status_of(found)
+  found <- availability_cached(cache_key("avail", "fields", key, year),
+                        function() availability_adc_features("Fields", geometry, c(year = as.character(year)), token))
+  status <- availability_status_of(found)
   list(status = status, detail = switch(status,
     yes = paste0("Agricultural fields for ", year, " are available for the selected area."),
     no = paste0("No Agricultural fields for ", year, " found for the selected area."),
@@ -128,7 +128,7 @@ availability_raster <- function(dataset, collections, table, year) {
 
 # NDVI: the rasters (GroenMonitor) cover the Netherlands; the statistics exist for the LTER and SNL project areas
 availability_ndvi <- function(geometry, area) {
-  outline <- netherlands_outline()
+  outline <- availability_nl_outline()
   rasters <- if (is.null(outline)) {
     list(status = "unknown", detail = "")
   } else {
@@ -138,7 +138,7 @@ availability_ndvi <- function(geometry, area) {
     else list(status = if (inside) "yes" else "no", detail = "")
   }
   sources <- if ("source_name" %in% names(area)) as.character(area$source_name) else character(nrow(area))
-  n_project <- sum(!is.na(vapply(sources, detect_ndvi_collection, "")))
+  n_project <- sum(!is.na(vapply(sources, project_ndvi_collection, "")))
   stats_text <- if (n_project > 0) {
     paste0("statistics for ", n_project, " of ", nrow(area), " selected polygon(s) (project areas)")
   } else {
@@ -159,13 +159,13 @@ availability_unwired <- function(dataset) list(status = "na", detail = paste0(da
 # list with the year of "Agricultural fields", "Land Use" and "Nitrogen" (a missing year means any), and
 # `weather_max_km` the largest distance to the weather station that counts as data. Returns a data frame
 # with a row for each dataset, in the order of `all_dataset_names`.
-check_area_availability <- function(area, ndc_token, adc_token, years = list(), weather_max_km = weather_max_station_km) {
+availability_check <- function(area, ndc_token, adc_token, years = list(), weather_max_km = weather_max_station_km) {
   geometry <- sf::st_union(sf::st_geometry(area))
   key <- sf::st_as_text(geometry, digits = 6)
   adc_ok <- !is.null(adc_token) && nzchar(adc_token)
   needs_adc <- list(status = "na", detail = "This dataset needs an AgroDataCube token (ADC_TOKEN).")
 
-  stac <- cached_check(cache_key("avail", "stac", key),
+  stac <- availability_cached(cache_key("avail", "stac", key),
                        function() rNDC::stac_availability(c(ndc_landuse_collection, nitrogen_layer_choices), geometry, ndc_token))
 
   results <- list(
@@ -186,7 +186,7 @@ check_area_availability <- function(area, ndc_token, adc_token, years = list(), 
   do.call(rbind, rows)
 }
 
-# The row of `table` (from `check_area_availability()`) for `dataset`, or NULL
+# The row of `table` (from `availability_check()`) for `dataset`, or NULL
 availability_of <- function(table, dataset) {
   if (is.null(table) || is.null(dataset)) return(NULL)
   row <- table[table$dataset == dataset, , drop = FALSE]
@@ -194,6 +194,6 @@ availability_of <- function(table, dataset) {
 }
 
 # The message for a dataset that is added where no data was found
-no_data_warning <- function(row) {
+availability_no_data_warning <- function(row) {
   paste0(sub("\\.$", "", row$detail), ". It is added anyway: the services may still have data for it.")
 }
