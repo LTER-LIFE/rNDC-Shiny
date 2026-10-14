@@ -1,4 +1,4 @@
-# rNDC.Shiny (development version)
+# rNDC.Shiny 0.5.2
 
 ## Changes
 

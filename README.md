@@ -141,6 +141,7 @@ roxygen2::roxygenise()  # regenerate NAMESPACE and man/ after changing roxygen c
 
 ## ToDo
 
+- Get NDVI data from _NatureDataCube_ instead / in addition to _AgroDataCube_
 - Per-user tokens
 
 ## Citation
