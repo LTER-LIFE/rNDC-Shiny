@@ -102,7 +102,7 @@ test_that("downloading builds the zip once, checks it, and serves it", {
 })
 
 test_that("nothing is offered for download when no dataset could be retrieved", {
-  local_mocked_bindings(get_landuse_raster = function(...) stop("nothing here", call. = FALSE), .package = "rNDC")
+  local_mocked_bindings(ndc_landuse_raster = function(...) stop("nothing here", call. = FALSE), .package = "rNDC")
 
   with_server({
     overview(overview_row("Land Use", year = 2024L))

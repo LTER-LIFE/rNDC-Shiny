@@ -64,20 +64,20 @@ retrieve_weather <- function(row, adc_token, stem = NULL) {
   ext <- vector_ext(row)
   failed <- function(message) outcome_none(paste0("Failed: Weather - ", message), ext)
 
-  closest_id <- rNDC::get_closest_meteostation(row$wkt, token = adc_token,
-                                               save_params = params_slot(stem, "station"))$closest_id
-  # get_closest_meteostation() gives character(0) (not NULL) when no id is found
+  closest_id <- rNDC::adc_weather_station(row$wkt, token = adc_token,
+                                          save_params = params_slot(stem, "station"))$closest_id
+  # adc_weather_station() gives character(0) (not NULL) when no id is found
   if (length(closest_id) != 1 || is.na(closest_id) || !nzchar(closest_id)) {
     return(failed("no nearby station found"))
   }
   if (is.na(row$date_from) || is.na(row$date_to)) return(failed("missing date range"))
 
   meteo <- if (row$date_from == row$date_to) {
-    rNDC::get_meteo_for_date(closest_id, row$date_from, adc_token, save_params = params_slot(stem))
+    rNDC::adc_weather_date(closest_id, row$date_from, adc_token, save_params = params_slot(stem))
   } else {
-    rNDC::get_meteo_for_long_period(meteostation = closest_id, fromdate = row$date_from,
-                                    todate = row$date_to, token = adc_token, by_days = weather_chunk_days,
-                                    sleep_sec = weather_chunk_sleep, save_params = params_slot(stem))
+    rNDC::adc_weather_long_period(station = closest_id, trange = c(row$date_from, row$date_to), token = adc_token,
+                                  by_days = weather_chunk_days, sleep_sec = weather_chunk_sleep,
+                                  save_params = params_slot(stem))
   }
   if (is.null(meteo) || nrow(meteo) == 0) return(failed("no data returned"))
 
@@ -99,8 +99,8 @@ retrieve_raster <- function(dataset, year, retrieve) {
 
 retrieve_nitrogen <- function(row, ndc_token, stem = NULL) {
   retrieve_raster("Nitrogen", row$year, function() {
-    rNDC::get_nitrogen_raster(aoi = row$polygon_sf[[1]], year = row$year, layers = nitrogen_layer_choices,
-                              token = ndc_token, out_dir = tempdir(), overwrite = TRUE, limit = 100,
+    rNDC::ndc_nitrogen_raster(roi = row$polygon_sf[[1]], year = row$year, layers = nitrogen_layer_choices,
+                              token = ndc_token, output_dir = tempdir(), overwrite = TRUE, limit = 100,
                               file_prefix = tempfile(), save_params = params_slot(stem))
   })
 }
@@ -109,7 +109,7 @@ retrieve_land_use <- function(row, ndc_token, stem = NULL) {
   year <- row$year
   if (is.na(year)) year <- as.integer(landuse_default_year)
   retrieve_raster("Land Use", year, function() {
-    rNDC::get_landuse_raster(aoi = row$polygon_sf[[1]], year = year, token = ndc_token, out_dir = tempdir(),
+    rNDC::ndc_landuse_raster(roi = row$polygon_sf[[1]], year = year, token = ndc_token, output_dir = tempdir(),
                              overwrite = TRUE, limit = 100, file_prefix = tempfile(), save_params = params_slot(stem))
   })
 }
@@ -152,7 +152,7 @@ retrieve_ndvi_rasters <- function(row, index, stem = NULL) {
     year <- as.integer(format(from, "%Y"))
     month <- as.integer(format(from, "%m"))
     label <- paste0(year, "-", sprintf("%02d", month))
-    r <- rNDC::download_avg_ndvi_month(poly, year, month, save_params = params_slot(stem))
+    r <- rNDC::gm_ndvi_month(poly, year, month, save_params = params_slot(stem))
     if (is.null(r)) {
       msg <- "No data available for this month"
       return(outcome_none(paste0("NDVI ", label, ": ", msg), "tif", status = msg))
@@ -168,10 +168,7 @@ retrieve_ndvi_rasters <- function(row, index, stem = NULL) {
 
   err <- NULL
   stack <- tryCatch(
-    rNDC::download_avg_ndvi_stack(poly = poly,
-                                  start_year = as.integer(format(from, "%Y")), start_month = as.integer(format(from, "%m")),
-                                  end_year = as.integer(format(to, "%Y")), end_month = as.integer(format(to, "%m")),
-                                  save_params = params_slot(stem)),
+    rNDC::gm_ndvi_stack(roi = poly, trange = c(from, to), save_params = params_slot(stem)),
     error = function(e) { err <<- conditionMessage(e); NULL }
   )
   if (is.null(stack) || terra::nlyr(stack) == 0) {

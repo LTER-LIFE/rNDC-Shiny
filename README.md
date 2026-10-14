@@ -59,13 +59,13 @@ See [`examples/tutorial.R`](examples/tutorial.R) for a tutorial that combines bi
 
 | Dataset | Output | Retrieved with | Token |
 |---|---|---|---|
-| Weather (KNMI, closest station) | table | `rNDC::get_closest_meteostation()`, `get_meteo_for_date()`, `get_meteo_for_long_period()` | `ADC_TOKEN` |
+| Weather (KNMI, closest station) | table | `rNDC::adc_weather_station()`, `adc_weather_date()`, `adc_weather_long_period()` | `ADC_TOKEN` |
 | Agricultural fields, Soil map | `sf` | `rNDC::adc_url()`, `rNDC::adc_get()` (all pages of the results) | `ADC_TOKEN` |
 | AHN | table | `rNDC::adc_url()`, `rNDC::adc_get()` | `ADC_TOKEN` |
 | NDVI, Statistics | table (monthly means per polygon) | `rNDC::ndc_get()` on `ndvi-lter` / `ndvi-snl`; only for LTER and SNL project areas | `NDC_TOKEN` |
-| NDVI, Geodata | raster (monthly means) | `rNDC::download_avg_ndvi_month()`, `download_avg_ndvi_stack()` | `NDC_TOKEN`\* |
-| Land Use | raster | `rNDC::get_landuse_raster()` | `NDC_TOKEN` |
-| Nitrogen | raster (`ntot`, `nox`, `nh3`) | `rNDC::get_nitrogen_raster()` | `NDC_TOKEN` |
+| NDVI, Geodata | raster (monthly means) | `rNDC::gm_ndvi_month()`, `gm_ndvi_stack()` | `NDC_TOKEN`\* |
+| Land Use | raster | `rNDC::ndc_landuse_raster()` | `NDC_TOKEN` |
+| Nitrogen | raster (`ntot`, `nox`, `nh3`) | `rNDC::ndc_nitrogen_raster()` | `NDC_TOKEN` |
 
 \* The NDVI rasters come from GroenMonitor, which needs no token; the app itself needs `NDC_TOKEN` to load the project areas.
 
@@ -122,7 +122,7 @@ podman compose up --build
 
 The app will be available at `http://localhost:3838/`.
 
-The image is reproducible: its base is `rocker/shiny` at a fixed R version and digest, and it installs `rNDC` at the tag of a release (`RNDC_REF` in the `Dockerfile` and `compose.yaml`, now `v0.5.1`). To use another tag, branch or commit, set `RNDC_REF` (e.g. `RNDC_REF=main docker compose up --build`). When a new rNDC release is needed, change the default of `RNDC_REF` in both files (and `rNDC (>= ...)` in `DESCRIPTION`).
+The image is reproducible: its base is `rocker/shiny` at a fixed R version and digest, and it installs `rNDC` at the tag of a release (`RNDC_REF` in the `Dockerfile` and `compose.yaml`, now `v0.5.2`; the image is named `rndc-shiny:0.5.2` and its labels tell which rNDC it holds). To use another tag, branch or commit, set `RNDC_REF` (e.g. `RNDC_REF=main docker compose up --build`). When a new rNDC release is needed, change the default of `RNDC_REF` in both files (and `rNDC (>= ...)` in `DESCRIPTION`).
 
 The build downloads `rNDC` from GitHub, which limits anonymous requests; if the build fails because of that, pass a GitHub token as a build secret (it is not kept in the image): `GITHUB_PAT=<token> docker build --secret id=github_pat,env=GITHUB_PAT -t rndc-shiny .`.
 

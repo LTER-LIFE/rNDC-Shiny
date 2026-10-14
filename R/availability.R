@@ -54,7 +54,7 @@ status_of <- function(found) if (is.null(found) || is.na(found)) "unknown" else 
 
 availability_weather <- function(geometry, key, token, max_km = weather_max_station_km) {
   distance <- cached_check(cache_key("avail", "weather", key), function() {
-    min(rNDC::get_closest_meteostation(sf::st_as_text(geometry), token = token)$distances) / 1000
+    min(rNDC::adc_weather_station(sf::st_as_text(geometry), token = token)$distances) / 1000
   })
   if (is.null(distance)) return(list(status = "unknown", detail = "Could not check for a weather station."))
   km <- round(distance)

@@ -113,8 +113,8 @@ test_that("there is data at the earliest dates and years that the app offers", {
                                     output_epsg = "4326"), token = Sys.getenv("ADC_TOKEN"))
   expect_gt(length(fields$features), 0)
 
-  station <- rNDC::get_closest_meteostation(poly, token = Sys.getenv("ADC_TOKEN"))$closest_id
-  meteo <- suppressWarnings(rNDC::get_meteo_for_date(station, weather_min_date, Sys.getenv("ADC_TOKEN")))
+  station <- rNDC::adc_weather_station(poly, token = Sys.getenv("ADC_TOKEN"))$closest_id
+  meteo <- suppressWarnings(rNDC::adc_weather_date(station, weather_min_date, Sys.getenv("ADC_TOKEN")))
   expect_false(is.null(meteo))
 })
 

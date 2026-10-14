@@ -104,9 +104,9 @@ fetch_ndvi_stats_monthly <- function(roi_sf, collection, date_from, date_to, sav
   }
 
   stats <- tryCatch(
-    rNDC::get_ndvi_stats(roi_sf, collection,
-                         from = if (is.null(date_from)) NA else date_from,
-                         to = if (is.null(date_to)) NA else date_to, save_params = save_params),
+    rNDC::ndc_ndvi_stats(roi_sf, collection,
+                         trange = c(if (is.null(date_from)) NA else date_from, if (is.null(date_to)) NA else date_to),
+                         save_params = save_params),
     error = function(e) structure("ndc_error", message = conditionMessage(e))
   )
   if (is.character(stats) && identical(as.character(stats), "ndc_error")) {

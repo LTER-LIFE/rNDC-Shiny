@@ -111,7 +111,7 @@ test_that("weather for a date is written as csv", {
 test_that("a single NDVI month is retrieved from the dates of its overview row, not from the inputs", {
   requested <- NULL
   local_mocked_bindings(
-    download_avg_ndvi_month = function(poly, year, month, ...) {
+    gm_ndvi_month = function(roi, year, month, ...) {
       requested <<- c(year, month)
       terra::rast(nrows = 2, ncols = 2, vals = 1:4)
     },
@@ -130,8 +130,9 @@ test_that("a single NDVI month is retrieved from the dates of its overview row, 
 test_that("an NDVI range is retrieved as a stack with NDVI_ layer names", {
   args <- NULL
   local_mocked_bindings(
-    download_avg_ndvi_stack = function(poly, start_year, start_month, end_year, end_month, ...) {
-      args <<- c(start_year, start_month, end_year, end_month)
+    gm_ndvi_stack = function(roi, trange, ...) {
+      args <<- c(as.integer(format(trange[1], "%Y")), as.integer(format(trange[1], "%m")),
+                 as.integer(format(trange[2], "%Y")), as.integer(format(trange[2], "%m")))
       r <- terra::rast(nrows = 2, ncols = 2, nlyrs = 2, vals = 1:8)
       names(r) <- c("ndvi_mean_202506", "ndvi_mean_202507")
       r
@@ -150,8 +151,8 @@ test_that("an NDVI range is retrieved as a stack with NDVI_ layer names", {
 test_that("rasters that cannot be retrieved are reported with the reason", {
   local_stac_api()  # the references are read from the STAC API
   local_mocked_bindings(
-    get_landuse_raster = function(...) stop("No Land Use raster items matched year 2024.", call. = FALSE),
-    get_nitrogen_raster = function(...) list(stack = terra::rast(nrows = 2, ncols = 2, vals = 1:4)),
+    ndc_landuse_raster = function(...) stop("No Land Use raster items matched year 2024.", call. = FALSE),
+    ndc_nitrogen_raster = function(...) list(stack = terra::rast(nrows = 2, ncols = 2, vals = 1:4)),
     .package = "rNDC"
   )
   rows <- list(overview_row("Land Use", year = 2024L), overview_row("Nitrogen", year = 2024L))
@@ -168,7 +169,7 @@ test_that("rasters that cannot be retrieved are reported with the reason", {
 
 test_that("the messages panel shows the result per dataset, escaped", {
   local_mocked_bindings(
-    get_landuse_raster = function(...) stop("bad <b>input</b>", call. = FALSE),
+    ndc_landuse_raster = function(...) stop("bad <b>input</b>", call. = FALSE),
     .package = "rNDC"
   )
   with_overview(overview_row("Land Use", year = 2024L), {
@@ -181,7 +182,7 @@ test_that("the messages panel shows the result per dataset, escaped", {
 
 test_that("downloading shows the reason when no dataset could be retrieved", {
   local_mocked_bindings(
-    get_landuse_raster = function(...) stop("No Land Use raster items matched year 2024.", call. = FALSE),
+    ndc_landuse_raster = function(...) stop("No Land Use raster items matched year 2024.", call. = FALSE),
     .package = "rNDC"
   )
   with_overview(overview_row("Land Use", year = 2024L), {
@@ -272,8 +273,8 @@ test_that("the progress follows what the rNDC functions report during a long ret
   )
   meteo <- sf::st_sf(day = 1, geometry = sf::st_sfc(sf::st_point(c(5, 52)), crs = 4326))
   local_mocked_bindings(
-    get_closest_meteostation = function(...) list(closest_id = "260"),
-    get_meteo_for_long_period = function(...) {
+    adc_weather_station = function(...) list(closest_id = "260"),
+    adc_weather_long_period = function(...) {
       # as the real function does: report before each request (see rNDC::ndc_with_progress())
       for (i in 1:4) getOption("rNDC.progress")(paste0("Downloading chunk ", i, " (", i, "/4)"), i, 4L)
       meteo
@@ -282,7 +283,7 @@ test_that("the progress follows what the rNDC functions report during a long ret
   )
   rows <- list(overview_row("Land Use", year = 2024L),
                overview_row("Weather", "Statistics", from = date_from <- as.Date("2024-01-01"), to = as.Date("2024-06-30")))
-  local_mocked_bindings(get_landuse_raster = function(...) list(stack = terra::rast(nrows = 2, ncols = 2, vals = 1:4)),
+  local_mocked_bindings(ndc_landuse_raster = function(...) list(stack = terra::rast(nrows = 2, ncols = 2, vals = 1:4)),
                         .package = "rNDC")
 
   with_overview(rows, {

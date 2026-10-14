@@ -45,6 +45,13 @@ COPY . /tmp/rNDC.Shiny
 RUN R CMD INSTALL --no-multiarch /tmp/rNDC.Shiny && rm -rf /tmp/rNDC.Shiny \
     && R -q -e "library(rNDC.Shiny); stopifnot(is.function(ndc_gui), is.function(ndc_app))"
 
+# What the image is made of, for whoever has the image (`docker inspect`): the rNDC release inside it (RNDC_REF, above)
+# and the version of this package
+LABEL org.opencontainers.image.title="rNDC.Shiny" \
+      org.opencontainers.image.version="0.5.2" \
+      org.opencontainers.image.source="https://github.com/LTER-LIFE/rNDC-Shiny" \
+      nl.lter-life.rndc.ref="${RNDC_REF}"
+
 # Port used by the app
 EXPOSE 3838
 

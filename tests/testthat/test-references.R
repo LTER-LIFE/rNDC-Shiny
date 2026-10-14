@@ -100,7 +100,7 @@ test_that("CITATIONS.txt says so when the references could not be read", {
 
 test_that("the download has CITATIONS.txt, and the references in the download summary", {
   local_stac_api()
-  local_mocked_bindings(get_landuse_raster = function(...) list(stack = small_raster()), .package = "rNDC")
+  local_mocked_bindings(ndc_landuse_raster = function(...) list(stack = small_raster()), .package = "rNDC")
   zip <- withr::local_tempfile(fileext = ".zip")
   res <- retrieve_and_package(overview_row("Land Use", year = 2024L), zipfile = zip, ndc_token = "t", adc_token = "t")
   expect_equal(res$messages, "Retrieved: Land Use raster for year 2024")
@@ -118,7 +118,7 @@ test_that("the download has CITATIONS.txt, and the references in the download su
 
 test_that("a download goes on when the references cannot be read, and says so", {
   local_stac_api(collections = list())  # the API lists no collections: unknown ones are an error of rNDC
-  local_mocked_bindings(get_landuse_raster = function(...) list(stack = small_raster()), .package = "rNDC")
+  local_mocked_bindings(ndc_landuse_raster = function(...) list(stack = small_raster()), .package = "rNDC")
   zip <- withr::local_tempfile(fileext = ".zip")
   res <- retrieve_and_package(overview_row("Land Use", year = 2024L), zipfile = zip, ndc_token = "t", adc_token = "t")
   expect_true(res$produced_any)
@@ -130,7 +130,7 @@ test_that("a download goes on when the references cannot be read, and says so", 
 })
 
 test_that("no CITATIONS.txt when nothing was retrieved", {
-  local_mocked_bindings(get_landuse_raster = function(...) stop("nothing here"), .package = "rNDC")
+  local_mocked_bindings(ndc_landuse_raster = function(...) stop("nothing here"), .package = "rNDC")
   res <- retrieve_and_package(overview_row("Land Use", year = 2024L), save_files = TRUE, ndc_token = "t", adc_token = "t")
   withr::defer(unlink(res$out_dir, recursive = TRUE))
   expect_false(res$produced_any)

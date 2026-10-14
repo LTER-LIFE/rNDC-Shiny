@@ -86,7 +86,7 @@ test_that("what the rNDC functions report is shown as progress", {
     rec$calls[[length(rec$calls) + 1]] <- list(detail = detail, value = value)
   })
 
-  # the contract with rNDC: a function reports to the option rNDC.progress (as rNDC::get_meteo_for_long_period does)
+  # the contract with rNDC: a function reports to the option rNDC.progress (as rNDC::adc_weather_long_period does)
   result <- with_request_progress({
     report <- getOption("rNDC.progress")
     report("Downloading a (1/2)", 1L, 2L)
@@ -104,11 +104,11 @@ test_that("a weather request of rNDC moves the bar", {
   rec$values <- numeric(0)
   local_mocked_bindings(report_progress = function(detail = NULL, value = NULL) rec$values <- c(rec$values, value))
   local_mocked_bindings(
-    get_meteo_for_period = function(...) sf::st_sf(a = 1, geometry = sf::st_sfc(sf::st_point(c(0, 0)), crs = 4326)),
+    adc_weather_period = function(...) sf::st_sf(a = 1, geometry = sf::st_sfc(sf::st_point(c(0, 0)), crs = 4326)),
     .package = "rNDC"
   )
   suppressMessages(with_request_progress(
-    rNDC::get_meteo_for_long_period(310, "2024-01-01", "2024-01-20", token = "t", by_days = 7), "Weather (A)", 1, 1
+    rNDC::adc_weather_long_period(310, c("2024-01-01", "2024-01-20"), token = "t", by_days = 7), "Weather (A)", 1, 1
   ))
   expect_equal(rec$values, c(0, 1 / 3, 2 / 3))
 })

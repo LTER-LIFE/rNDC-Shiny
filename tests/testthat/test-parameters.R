@@ -50,16 +50,16 @@ test_that("Weather records the station and the data as two files, and the summar
   expect_equal(res$manifest[[2]]$parameters, "parameters/weather_statistics_own_polygon.json")
   station <- jsonlite::fromJSON(file.path(dir, "parameters", "weather_statistics_own_polygon_station.json"), simplifyVector = FALSE)
   data <- jsonlite::fromJSON(file.path(dir, "parameters", "weather_statistics_own_polygon.json"), simplifyVector = FALSE)
-  expect_equal(station$schema, "rNDC-get_closest_meteostation/1")
-  expect_equal(station$polygon_wkt$type, "Polygon")
-  expect_equal(data$schema, "rNDC-get_meteo_for_date/1")
-  expect_equal(c(data$stationid, data$date), c("260", "2024-05-01"))
+  expect_equal(station$schema, "rNDC-adc_weather_station/1")
+  expect_equal(station$roi$type, "Polygon")
+  expect_equal(data$schema, "rNDC-adc_weather_date/1")
+  expect_equal(c(data$station, data$date), c("260", "2024-05-01"))
   expect_equal(rNDC::ndc_repeat(file.path(dir, "parameters", "weather_statistics_own_polygon.json"), token = "t")$mean_temperature, 10)
 })
 
 test_that("the parameters of a dataset that was not retrieved are not kept", {
   local_stac_api()
-  local_mocked_bindings(get_landuse_raster = function(..., save_params = NULL) {
+  local_mocked_bindings(ndc_landuse_raster = function(..., save_params = NULL) {
     if (!is.null(save_params)) writeLines("{}", save_params)   # (recorded before the problem)
     NULL
   }, .package = "rNDC")
@@ -105,7 +105,7 @@ test_that("the download has a checkbox for the parameters, which the retrieval f
   local_clean_cache()
   local_stac_api()
   recorded <- list()
-  local_mocked_bindings(get_landuse_raster = function(..., save_params = NULL) {
+  local_mocked_bindings(ndc_landuse_raster = function(..., save_params = NULL) {
     recorded[[length(recorded) + 1]] <<- is.null(save_params)
     if (!is.null(save_params)) writeLines("{}", save_params)
     list(stack = terra::rast(nrows = 2, ncols = 2, vals = 1:4))
@@ -131,7 +131,7 @@ test_that("the background job is told whether to record the parameters", {
   local_stac_api()
   fake <- fake_manager(run = TRUE)
   local_jobs(fake$manager)
-  local_mocked_bindings(get_landuse_raster = function(..., save_params = NULL) {
+  local_mocked_bindings(ndc_landuse_raster = function(..., save_params = NULL) {
     if (!is.null(save_params)) writeLines("{}", save_params)
     list(stack = terra::rast(nrows = 2, ncols = 2, vals = 1:4))
   }, .package = "rNDC")

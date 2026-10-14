@@ -332,7 +332,7 @@ test_that("rasters and vectors survive being sent to another process when they a
 
 test_that("retrieve_and_package returns the data, or not, and wraps rasters when asked", {
   local_stac_api()  # the references are read from the STAC API
-  local_mocked_bindings(get_landuse_raster = function(...) list(stack = raster()), .package = "rNDC")
+  local_mocked_bindings(ndc_landuse_raster = function(...) list(stack = raster()), .package = "rNDC")
   ov <- overview_row("Land Use", year = 2024L)
   calls <- list()
   progress <- function(detail = NULL, value = NULL) calls[[length(calls) + 1]] <<- list(detail = detail, value = value)
@@ -354,7 +354,7 @@ test_that("retrieve_and_package returns the data, or not, and wraps rasters when
 
 test_that("retrieve_and_package zips, and leaves nothing behind", {
   local_stac_api()  # the references are read from the STAC API
-  local_mocked_bindings(get_landuse_raster = function(...) list(stack = raster()), .package = "rNDC")
+  local_mocked_bindings(ndc_landuse_raster = function(...) list(stack = raster()), .package = "rNDC")
   before <- list.files(tempdir(), "^ndc_export_")
   zip <- withr::local_tempfile(fileext = ".zip")
 
@@ -379,7 +379,7 @@ test_that("a download is built in the background", {
   rec <- new.env()
   rec$calls <- 0
   local_mocked_bindings(
-    get_landuse_raster = function(...) {
+    ndc_landuse_raster = function(...) {
       rec$calls <- rec$calls + 1
       list(stack = raster())
     },
@@ -438,7 +438,7 @@ test_that("while a retrieval runs the page offers to cancel it, and a second cli
 test_that("'Return data to R' gets the data from the background, rasters included", {
   local_jobs(inline_jobs()$manager)
   rec <- new.env()
-  local_mocked_bindings(get_landuse_raster = function(...) list(stack = raster()), .package = "rNDC")
+  local_mocked_bindings(ndc_landuse_raster = function(...) list(stack = raster()), .package = "rNDC")
   local_mocked_bindings(return_data_to_r = function(res) rec$res <- res)
 
   with_server({
@@ -597,7 +597,7 @@ test_that("a download that finished when the user leaves does not leave a zip be
 })
 
 test_that("without the background mode a download is built at once, as before", {
-  local_mocked_bindings(get_landuse_raster = function(...) list(stack = raster()), .package = "rNDC")
+  local_mocked_bindings(ndc_landuse_raster = function(...) list(stack = raster()), .package = "rNDC")
   expect_false(async_enabled())
 
   with_server({

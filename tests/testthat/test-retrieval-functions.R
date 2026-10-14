@@ -88,8 +88,8 @@ test_that("retrieve_dataset reports datasets that have no retrieval", {
 test_that("weather: the reasons for having no data are reported", {
   station_id <- NULL
   local_mocked_bindings(
-    get_closest_meteostation = function(...) list(closest_id = station_id),
-    get_meteo_for_date = function(...) NULL,
+    adc_weather_station = function(...) list(closest_id = station_id),
+    adc_weather_date = function(...) NULL,
     .package = "rNDC"
   )
   dated <- overview_row("Weather", "Statistics", from = date("2024-05-01"), to = date("2024-05-01"))
@@ -110,14 +110,14 @@ test_that("weather: the reasons for having no data are reported", {
   expect_equal(retrieve_weather(modifyList(dated, list(view = "Geodata")), "t")$file_type, "gpkg")
 })
 
-test_that("weather: one date uses get_meteo_for_date and a period the long-period function", {
+test_that("weather: one date uses adc_weather_date and a period the long-period function", {
   calls <- character()
   meteo <- sf::st_sf(day = 1, geometry = sf::st_sfc(sf::st_point(c(5, 52)), crs = 4326))
   local_mocked_bindings(
-    get_closest_meteostation = function(...) list(closest_id = "260"),
-    get_meteo_for_date = function(id, date, token, ...) { calls <<- c(calls, paste("date", id, format(date), token)); meteo },
-    get_meteo_for_long_period = function(meteostation, fromdate, todate, token, by_days, sleep_sec, ...) {
-      calls <<- c(calls, paste("period", meteostation, format(fromdate), format(todate), by_days))
+    adc_weather_station = function(...) list(closest_id = "260"),
+    adc_weather_date = function(id, date, token, ...) { calls <<- c(calls, paste("date", id, format(date), token)); meteo },
+    adc_weather_long_period = function(station, trange, token, by_days, sleep_sec, ...) {
+      calls <<- c(calls, paste("period", station, format(trange[1]), format(trange[2]), by_days))
       meteo
     },
     .package = "rNDC"
@@ -132,8 +132,8 @@ test_that("weather: one date uses get_meteo_for_date and a period the long-perio
 test_that("rasters: land use falls back to the default year, and messages name the year", {
   years <- NULL
   local_mocked_bindings(
-    get_landuse_raster = function(aoi, year, ...) { years <<- c(years, year); list(stack = terra::rast(nrows = 2, ncols = 2, vals = 1:4)) },
-    get_nitrogen_raster = function(aoi, year, layers, ...) list(stack = NULL),
+    ndc_landuse_raster = function(roi, year, ...) { years <<- c(years, year); list(stack = terra::rast(nrows = 2, ncols = 2, vals = 1:4)) },
+    ndc_nitrogen_raster = function(roi, year, layers, ...) list(stack = NULL),
     .package = "rNDC"
   )
   lu <- retrieve_land_use(overview_row("Land Use"), "t")
@@ -153,9 +153,9 @@ test_that("rasters: land use falls back to the default year, and messages name t
 test_that("NDVI rasters: a single month, a range, and an invalid period", {
   calls <- character()
   local_mocked_bindings(
-    download_avg_ndvi_month = function(poly, year, month, ...) { calls <<- c(calls, paste("month", year, month)); NULL },
-    download_avg_ndvi_stack = function(poly, start_year, start_month, end_year, end_month, ...) {
-      calls <<- c(calls, paste("stack", start_year, start_month, end_year, end_month))
+    gm_ndvi_month = function(roi, year, month, ...) { calls <<- c(calls, paste("month", year, month)); NULL },
+    gm_ndvi_stack = function(roi, trange, ...) {
+      calls <<- c(calls, paste("stack", as.integer(format(trange[1], "%Y")), as.integer(format(trange[1], "%m")), as.integer(format(trange[2], "%Y")), as.integer(format(trange[2], "%m"))))
       NULL
     },
     .package = "rNDC"
@@ -210,7 +210,7 @@ test_that("retrieve_row writes the data, and the reference polygon once per poly
 })
 
 test_that("retrieve_row reports an error of the retrieval or of the writing for that row only", {
-  local_mocked_bindings(get_landuse_raster = function(...) stop("boom", call. = FALSE), .package = "rNDC")
+  local_mocked_bindings(ndc_landuse_raster = function(...) stop("boom", call. = FALSE), .package = "rNDC")
   res <- retrieve_row(overview_row("Land Use", year = 2024L), 3, workdir = NULL, ndc_token = "t", adc_token = "t")
   expect_null(res$data)
   expect_equal(res$messages, "Failed: Land Use - boom")
@@ -219,7 +219,7 @@ test_that("retrieve_row reports an error of the retrieval or of the writing for 
 
   # A writer that cannot write: the data is still returned, with the message for it
   local_mocked_bindings(
-    get_landuse_raster = function(...) list(stack = terra::rast(nrows = 2, ncols = 2, vals = 1:4)),
+    ndc_landuse_raster = function(...) list(stack = terra::rast(nrows = 2, ncols = 2, vals = 1:4)),
     .package = "rNDC"
   )
   local_mocked_bindings(write_sf_safe = function(...) FALSE)
@@ -230,7 +230,7 @@ test_that("retrieve_row reports an error of the retrieval or of the writing for 
 })
 
 test_that("a writer that throws is reported as a failure of that dataset, keeping the data", {
-  local_mocked_bindings(get_landuse_raster = function(...) list(stack = terra::rast(nrows = 2, ncols = 2, vals = 1:4)),
+  local_mocked_bindings(ndc_landuse_raster = function(...) list(stack = terra::rast(nrows = 2, ncols = 2, vals = 1:4)),
                         .package = "rNDC")
   local_mocked_bindings(write_sf_safe = function(...) stop("disk full", call. = FALSE))
   res <- retrieve_row(overview_row("Land Use", year = 2024L), 1, withr::local_tempdir(), "t", "t")

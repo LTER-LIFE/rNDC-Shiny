@@ -69,7 +69,7 @@ mock_services <- function(env = parent.frame(), soil = 1, ahn = list(area = 1, m
       rec$calls <- c(rec$calls, "AHN")
       list(features = list(list(properties = ahn)))
     },
-    get_closest_meteostation = function(polygon_wkt, token, ...) {
+    adc_weather_station = function(roi, token, ...) {
       rec$calls <- c(rec$calls, "stations")
       list(distances = c(distance + 5000, distance))
     },
@@ -121,7 +121,7 @@ test_that("the services say no, and the check says so", {
 test_that("failed requests are unknown, not no, and are not cached", {
   local_clean_cache()
   rec <- mock_services()
-  local_mocked_bindings(adc_get = function(...) stop("down"), get_closest_meteostation = function(...) stop("down"),
+  local_mocked_bindings(adc_get = function(...) stop("down"), adc_weather_station = function(...) stop("down"),
                         .package = "rNDC")
   local_mocked_bindings(stac_availability = function(...) stop("down"), .package = "rNDC")
   table <- check_area_availability(area(), "t", "t", years = list("Agricultural fields" = 2023))
