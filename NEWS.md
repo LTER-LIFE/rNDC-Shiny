@@ -4,6 +4,8 @@
 
 * The functions of rNDC that the app calls were renamed in rNDC 0.5.2 (`get_landuse_raster()` is `ndc_landuse_raster()`, `get_meteo_for_period()` is `adc_weather_period()`, `download_avg_ndvi_month()` is `gm_ndvi_month()`, and so on, with `roi`, `trange` and `station` as the names of the arguments): the app uses the new names. It needs rNDC 0.5.2. The `parameters` files of the downloads are named after the new functions (`rNDC-ndc_landuse_raster/1`).
 
+* A check of the availability of a dataset that fails (the "?" next to Soil map, AHN, Weather and the other datasets) is tried once more, prints its error in the R console and says the reason in the hover text ("Could not check for Soil map data (HTTP 503 ...)"); before, the error was lost.
+
 ## New
 
 * The download has the parameters of each retrieval, to repeat it in R: a folder `parameters` in the zip with one JSON file per dataset, named after its data file (`parameters/land_use_geodata_loobos.json`; Weather has a second file `..._station.json` for the choice of the weather station), and the column `parameters` of `download_summary.csv` names it. `rNDC::ndc_repeat("parameters/land_use_geodata_loobos.json")` runs the retrieval again, with the same area, year and period (add `token =` for the AgroDataCube; the files never hold a token). The area is in the file as it was sent: the shortened polygon for AgroDataCube. A checkbox under the download button turns it off (on by default). When the data are returned to R, the files come as texts in `parameters`. This needs the parameters of the retrieval functions of rNDC 0.5.2, and `zip` 2.3.0 (the folder is kept in the zip).

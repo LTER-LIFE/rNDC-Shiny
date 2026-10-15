@@ -16,11 +16,32 @@ availability_row <- function(dataset, status, detail = "") {
   data.frame(dataset = dataset, status = status, detail = detail, stringsAsFactors = FALSE)
 }
 
-# Compute `compute()` once per `key`: cached for all sessions. A NULL result (a failed request) is not cached.
+# The reason that the last attempt for a key failed, to say it in the detail of the row and in the console
+availability_errors <- new.env(parent = emptyenv())
+
+# Compute `compute()` once per `key`: cached for all sessions. A request that fails is tried once more (the services
+# fail now and then); if it fails again the result is NULL (not cached), and the reason is printed and kept for
+# `availability_could_not()`.
 availability_cached <- function(key, compute) {
   value <- cache_get(key)
-  if (is.null(value)) value <- cache_set(key, tryCatch(compute(), error = function(e) NULL))
-  value
+  if (!is.null(value)) return(value)
+  attempt <- function() tryCatch(compute(), error = function(e) e)
+  value <- attempt()
+  if (inherits(value, "error")) value <- attempt()
+  if (inherits(value, "error")) {
+    reason <- conditionMessage(value)
+    assign(key, reason, envir = availability_errors)
+    message("Availability check failed (", sub("^avail\\|([^|]*)\\|.*$", "\\1", key), "): ", reason)
+    return(NULL)
+  }
+  rm(list = intersect(key, ls(availability_errors)), envir = availability_errors)
+  cache_set(key, value)
+}
+
+# "Could not check for <what>." with the reason it failed, if one is known for `key`
+availability_could_not <- function(what, key) {
+  reason <- availability_errors[[key]]
+  paste0("Could not check for ", what, if (!is.null(reason)) paste0(" (", substr(reason, 1, 200), ")") else "", ".")
 }
 
 # The outline of the Netherlands, in the Dutch grid (bundled with rNDC), read once per process; NULL if it cannot be read
@@ -53,10 +74,11 @@ availability_adc_features <- function(option, geometry, extra, token, test = fun
 availability_status_of <- function(found) if (is.null(found) || is.na(found)) "unknown" else if (isTRUE(found)) "yes" else "no"
 
 availability_weather <- function(geometry, key, token, max_km = weather_max_station_km) {
-  distance <- availability_cached(cache_key("avail", "weather", key), function() {
+  cache <- cache_key("avail", "weather", key)
+  distance <- availability_cached(cache, function() {
     min(rNDC::adc_weather_station(sf::st_as_text(geometry), token = token)$distances) / 1000
   })
-  if (is.null(distance)) return(list(status = "unknown", detail = "Could not check for a weather station."))
+  if (is.null(distance)) return(list(status = "unknown", detail = availability_could_not("a weather station", cache)))
   km <- round(distance)
   if (distance <= max_km) {
     list(status = "yes", detail = paste0("A weather station is ", km, " km from the selected area."))
@@ -67,38 +89,38 @@ availability_weather <- function(geometry, key, token, max_km = weather_max_stat
 }
 
 availability_soil <- function(geometry, key, token) {
-  found <- availability_cached(cache_key("avail", "soil", key),
-                        function() availability_adc_features("Soiltypes", geometry, NULL, token))
+  cache <- cache_key("avail", "soil", key)
+  found <- availability_cached(cache, function() availability_adc_features("Soiltypes", geometry, NULL, token))
   status <- availability_status_of(found)
   list(status = status, detail = switch(status,
     yes = "Soil map data is available for the selected area.",
     no = "No Soil map data found for the selected area.",
-    "Could not check for Soil map data."))
+    availability_could_not("Soil map data", cache)))
 }
 
 availability_ahn <- function(geometry, key, token) {
   # AHN answers with one feature for any area; without elevation data its properties are empty
   has_values <- function(features) length(features) > 0 && length(Filter(Negate(is.null), features[[1]]$properties)) > 0
-  found <- availability_cached(cache_key("avail", "ahn", key),
-                        function() availability_adc_features("AHN", geometry, NULL, token, test = has_values))
+  cache <- cache_key("avail", "ahn", key)
+  found <- availability_cached(cache, function() availability_adc_features("AHN", geometry, NULL, token, test = has_values))
   status <- availability_status_of(found)
   list(status = status, detail = switch(status,
     yes = "Elevation (AHN) data is available for the selected area.",
     no = "No elevation (AHN) data found for the selected area.",
-    "Could not check for elevation (AHN) data."))
+    availability_could_not("elevation (AHN) data", cache)))
 }
 
 availability_fields <- function(geometry, key, token, year) {
   if (is.null(year) || is.na(suppressWarnings(as.integer(year)))) {
     return(list(status = "unknown", detail = "Choose a year to check for Agricultural fields."))
   }
-  found <- availability_cached(cache_key("avail", "fields", key, year),
-                        function() availability_adc_features("Fields", geometry, c(year = as.character(year)), token))
+  cache <- cache_key("avail", "fields", key, year)
+  found <- availability_cached(cache, function() availability_adc_features("Fields", geometry, c(year = as.character(year)), token))
   status <- availability_status_of(found)
   list(status = status, detail = switch(status,
     yes = paste0("Agricultural fields for ", year, " are available for the selected area."),
     no = paste0("No Agricultural fields for ", year, " found for the selected area."),
-    "Could not check for Agricultural fields."))
+    availability_could_not("Agricultural fields", cache)))
 }
 
 # Land Use and Nitrogen: from the table of `stac_availability()`

@@ -104,6 +104,26 @@ test_that("failed requests are unknown, not no, and are not cached", {
   expect_length(ls(ndc_cache), 0)
 })
 
+test_that("a failed check says why, and a request that fails once is tried again", {
+  local_clean_cache()
+  rm(list = ls(availability_errors), envir = availability_errors)
+  calls <- 0
+  local_mocked_bindings(adc_get = function(...) { calls <<- calls + 1; stop("HTTP 503") }, .package = "rNDC")
+  expect_message(row <- availability_soil(sf::st_geometry(selected_polygon()), "k-fail", "t"), "HTTP 503")
+  expect_equal(calls, 2)
+  expect_equal(row$status, "unknown")
+  expect_match(row$detail, "Could not check for Soil map data (HTTP 503", fixed = TRUE)
+
+  calls <- 0
+  local_mocked_bindings(adc_get = function(...) {
+    calls <<- calls + 1
+    if (calls == 1) stop("HTTP 503")
+    list(features = list(list(properties = list(a = 1))))
+  }, .package = "rNDC")
+  expect_equal(availability_soil(sf::st_geometry(selected_polygon()), "k-retry", "t")$status, "yes")
+  expect_equal(calls, 2)
+})
+
 test_that("without an AgroDataCube token its datasets do not apply, and Fields wants a year", {
   local_clean_cache()
   rec <- mock_services()
