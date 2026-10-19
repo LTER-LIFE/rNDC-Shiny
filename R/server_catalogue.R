@@ -34,7 +34,7 @@ server_catalogue <- function(input, output, session, state, helpers) {
     table <- cache_get(key)
     if (is.null(table)) {
       table <- tryCatch(
-        withProgress(message = "Checking the datasets...", value = 0.5, rNDC::ndc_available(geometry, trange, token = mytoken)),
+        catalogue_with_progress(rNDC::ndc_available(geometry, trange, token = mytoken)),
         error = function(e) e
       )
       if (inherits(table, "error")) {

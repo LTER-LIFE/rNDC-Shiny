@@ -49,3 +49,16 @@ catalogue_note <- function(available, trange = NULL) {
                               "that is known for them: nothing is asked of those services.") else "",
          " The periods are as published with the datasets and can be out of date.")
 }
+
+# Evaluate `expr` (rNDC::ndc_available()) with a progress bar that says how many of the datasets have been tested: rNDC reports
+# each collection that it counts one by one (the slow part, a request each); before that there is only the reading of the
+# collections and the search. The progress bar must be shown by a function that runs in a Shiny session.
+catalogue_with_progress <- function(expr) {
+  withProgress(message = "Checking datasets...", value = 0, {
+    setProgress(value = 0, detail = "Reading the collections...")
+    rNDC::ndc_with_progress(expr, report = function(message, current, total) {
+      tested <- max(0L, current - 1L)           # (the report comes before the request: this one is not done yet)
+      setProgress(value = tested / total, detail = sprintf("%d of %d datasets tested", tested, total))
+    })
+  })
+}

@@ -90,6 +90,34 @@ test_that("the period is passed on when the user asks for one, and each question
   })
 })
 
+test_that("the progress bar of the dialog says how many of the datasets have been tested", {
+  local_clean_cache()
+  mock_check()
+  # the first page has lgn only and the search says there are more items: ntot and nox are counted one by one
+  lgn_item <- function(date) {
+    item <- raster_item("a", date)
+    item$collection <- "lgn"
+    item
+  }
+  local_stac_api(pages = list(list(lgn_item("2024-01-01")), list(lgn_item("2025-01-01"))),
+                 collections = list(ref_collection("lgn"), ref_collection("ntot"), ref_collection("nox")))
+  seen <- new.env()
+  seen$set <- list()
+  local_mocked_bindings(setProgress = function(value = NULL, message = NULL, detail = NULL, ...) {
+    seen$set[[length(seen$set) + 1]] <- list(value = value, detail = detail)
+  })
+
+  with_server({
+    selected_polygons(selected_polygon())
+    session$setInputs(check_availability = 1)
+    invisible(output$catalogue_table)
+    table <- Filter(function(x) grepl("collections\\.\\.\\.|of 3 datasets", x$detail), seen$set)
+    expect_equal(vapply(table, function(x) x$detail, ""),
+                 c("Reading the collections...", "0 of 3 datasets tested", "1 of 3 datasets tested", "2 of 3 datasets tested"))
+    expect_equal(vapply(table, function(x) x$value, 0), c(0, 0, 1 / 3, 2 / 3))     # one count over both steps of the question
+  })
+})
+
 test_that("the dialog says to select an area first, and why the datasets could not be listed", {
   local_clean_cache()
   mock_check()
