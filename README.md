@@ -25,8 +25,8 @@ API tokens are read from environment variables:
 
 | Variable | Needed for |
 |---|---|
-| `NDC_TOKEN` | **Required.** The *NatureDataCube* STAC API: project layers, NDVI statistics, Land Use and Nitrogen. |
-| `ADC_TOKEN` | Optional. The *AgroDataCube* REST API: Weather, Soil map, AHN and Agricultural fields. Without it, these datasets are disabled in the app. |
+| `NDC_TOKEN` | **Required.** The *NatureDataCube* STAC API: project layers, and the datasets NDVI, Land Use, Nitrogen, Soil map and AHN. |
+| `ADC_TOKEN` | Optional. The *AgroDataCube* REST API: Weather and Agricultural fields, the two datasets that the NatureDataCube does not have. Without it, these two are disabled in the app. |
 
 For example, `Sys.setenv(NDC_TOKEN = "<your token>", ADC_TOKEN = "<your token>")`, or put them in your `.Renviron`.
 
@@ -60,14 +60,14 @@ See [`examples/tutorial.R`](examples/tutorial.R) for a tutorial that combines bi
 | Dataset | Output | Retrieved with | Token |
 |---|---|---|---|
 | Weather (KNMI, closest station) | table | `rNDC::adc_weather_station()`, `adc_weather_date()`, `adc_weather_long_period()` | `ADC_TOKEN` |
-| Agricultural fields, Soil map | `sf` | `rNDC::adc_url()`, `rNDC::adc_get()` (all pages of the results) | `ADC_TOKEN` |
-| AHN | table | `rNDC::adc_url()`, `rNDC::adc_get()` | `ADC_TOKEN` |
+| Agricultural fields | `sf` | `rNDC::adc_url()`, `rNDC::adc_get()` (all pages of the results) | `ADC_TOKEN` |
+| AHN, Statistics | table (area, minimum, maximum, mean and standard deviation of the heights, for the terrain and the object height) | `rNDC::ndc_ahn_stats()` (collection `ahnmetrics`) | `NDC_TOKEN` |
+| AHN, Geodata | two rasters (terrain height, 5 m, and object height, 2.5 m; in metres) | `rNDC::ndc_ahn_raster()` | `NDC_TOKEN` |
+| Soil map | raster (the code of the soil type in each 5 m cell) and a table with the name of each code | `rNDC::ndc_soil_raster()` (collection `soiltypes`) | `NDC_TOKEN` |
 | NDVI, Statistics | table (monthly means per polygon) | `rNDC::ndc_get()` on `ndvi-lter` / `ndvi-snl`; only for LTER and SNL project areas | `NDC_TOKEN` |
-| NDVI, Geodata | raster (monthly means) | `rNDC::gm_ndvi_month()`, `gm_ndvi_stack()` | `NDC_TOKEN`\* |
+| NDVI, Geodata | raster (monthly means, NDVI from 0 to 1) | `rNDC::ndc_ndvi_month()`, `ndc_ndvi_stack()` (the `ndvi` collection) | `NDC_TOKEN` |
 | Land Use | raster | `rNDC::ndc_landuse_raster()` | `NDC_TOKEN` |
 | Nitrogen | raster (`ntot`, `nox`, `nh3`) | `rNDC::ndc_nitrogen_raster()` | `NDC_TOKEN` |
-
-\* The NDVI rasters come from GroenMonitor, which needs no token; the app itself needs `NDC_TOKEN` to load the project areas.
 
 For Land Use and Nitrogen, the app tells you whether the selected area has data for the chosen year before you add the dataset.
 
@@ -89,10 +89,10 @@ A session retrieves one overview at a time. In the background mode, the package 
 Areas of interest can be one of the project areas (LTER projects, or SNL parcels), polygons you draw on the map (the polygon tool and the trash can of the toolbar on the map), or polygons you upload (GeoPackage, shapefile, GeoJSON, KML, or a zip file with these). Drawn and uploaded polygons have no NDVI statistics. Limits protect the server from requests that are too large:
 
 * Uploads can be up to 100 MB in total (set `NDC_MAX_UPLOAD_MB` to change this; Shiny's own default is 5 MB), with at most 1000 polygons per file or layer. A zip file may hold at most 200 files and 500 MB when unpacked. Every polygon of a file is a shape of its own on the map that can be selected; the upload is listed once and removed as a whole. A file without a coordinate system is taken to be in WGS84, and polygons that cross themselves are repaired (the app tells you).
-* Datasets (Weather excepted, which uses the centre of the polygon) are only added for polygons up to 1000 km2 (`NDC_MAX_AREA_KM2` changes this); larger polygons are listed in a message and skipped.
-* AgroDataCube (Agricultural fields, Soil map, AHN) takes the polygon in the URL, which its server refuses above about 8000 characters (some 300 vertices). A longer polygon is sent with 6 decimals and, if that is not enough, simplified in steps of 1 to 1000 m; the message of the dataset says by how much. The files of the other datasets use the polygon as it is.
+* Datasets (Weather excepted, which uses the centre of the polygon) are only added for polygons up to 2000 km2 (`NDC_MAX_AREA_KM2` changes this); larger polygons are listed in a message and skipped.
+* AgroDataCube (Agricultural fields) takes the polygon in the URL, which its server refuses above about 8000 characters (some 300 vertices). A longer polygon is sent with 6 decimals and, if that is not enough, simplified in steps of 1 to 1000 m; the message of the dataset says by how much. The files of the other datasets use the polygon as it is.
 
-**Which datasets have data?** When you select an area, the app checks which datasets have data for it and marks them in the menu: a check mark (green, orange where only part of the data was found, e.g. not all nitrogen layers), a cross where nothing was found, a question mark where the check could not be made. Point at a dataset for the details. Land Use and Nitrogen are checked in the NatureDataCube (for the year you chose), Soil map, AHN and Agricultural fields (for the chosen year) with AgroDataCube, Weather by the distance to the closest station (at most 30 km by default; the Weather settings have a box "Largest distance to the weather station (km)" to change it), the NDVI rasters by whether the area is in the Netherlands and the NDVI statistics by whether it is an LTER or SNL project area. The check tells what the services know about the area, so a dataset marked with a cross can still be added (the app warns).
+**Which datasets have data?** When you select an area, the app checks which datasets have data for it and marks them in the menu: a check mark (green, orange where only part of the data was found, e.g. not all nitrogen layers), a cross where nothing was found, a question mark where the check could not be made. Point at a dataset for the details. Land Use and Nitrogen (for the year you chose), Soil map and AHN are checked in the NatureDataCube, Agricultural fields (for the chosen year) with AgroDataCube, Weather by the distance to the closest station (at most 30 km by default; the Weather settings have a box "Largest distance to the weather station (km)" to change it), the NDVI rasters by whether the area is in the Netherlands and the NDVI statistics by whether it is an LTER or SNL project area. The check tells what the services know about the area, so a dataset marked with a cross can still be added (the app warns).
 
 ## Running with Docker or Podman
 
@@ -108,7 +108,7 @@ ADC_TOKEN=your_agrodatacube_token_here
 SHINY_APP_BASE_URL=/naturedatacube
 ```
 
-`NDC_TOKEN` is required. `ADC_TOKEN` is optional: without it, the datasets from AgroDataCube (Weather, Soil map, AHN and Agricultural fields) are disabled. `SHINY_APP_BASE_URL` is only needed when a reverse proxy publishes the app under a path. The optional `NDC_ASYNC`, `NDC_WORKERS`, `NDC_MAX_REQUEST_SECONDS` and `NDC_MAX_UPLOAD_MB` are described in the sections above; in the container the retrievals run in background processes by default (`NDC_ASYNC=true`), up to 4 at the same time.
+`NDC_TOKEN` is required. `ADC_TOKEN` is optional: without it, the datasets from AgroDataCube (Weather and Agricultural fields) are disabled; everything else comes from the NatureDataCube. `SHINY_APP_BASE_URL` is only needed when a reverse proxy publishes the app under a path. The optional `NDC_ASYNC`, `NDC_WORKERS`, `NDC_MAX_REQUEST_SECONDS` and `NDC_MAX_UPLOAD_MB` are described in the sections above; in the container the retrievals run in background processes by default (`NDC_ASYNC=true`), up to 4 at the same time.
 
 **Run:**
 

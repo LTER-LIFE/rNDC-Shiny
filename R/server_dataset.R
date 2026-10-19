@@ -25,7 +25,7 @@ server_dataset <- function(input, output, session, state, helpers) {
 
   if (!adc_available) {
     showNotification(
-      "No ADC_TOKEN set: Weather, Soil map, AHN and Agricultural fields are unavailable.",
+      "No ADC_TOKEN set: Weather and Agricultural fields are unavailable.",
       type = "warning", duration = 10
     )
   }

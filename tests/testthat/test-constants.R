@@ -5,9 +5,12 @@ test_that("dataset and tab helpers", {
   expect_equal(dataset_target_id("Soil map", "Geodata"), "tab_target_soil_map_geodata")
   expect_equal(dataset_tabs("NDVI"), c("Statistics", "Geodata"))
   expect_equal(dataset_tabs("Weather"), "Statistics")
+  expect_equal(dataset_tabs("AHN"), c("Statistics", "Geodata"))
+  expect_equal(dataset_tabs("Soil map"), "Geodata")
   expect_equal(dataset_tabs("Land Use"), "Geodata")
   expect_equal(dataset_default_tab("NDVI"), "Statistics")
   expect_true(all(adc_datasets %in% all_dataset_names))
+  expect_equal(adc_datasets, c("Weather", "Agricultural fields"))   # Soil map and AHN come from the NatureDataCube
 })
 
 test_that("rNDC constants are available", {

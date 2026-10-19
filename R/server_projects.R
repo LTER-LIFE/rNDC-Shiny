@@ -103,7 +103,7 @@ server_projects <- function(input, output, session, state, helpers) {
       poly <- polygon_assign_names(poly, base_name = this_class,
                                              overview(), fixed_polys(), uploaded_polys(), drawn_features())
       # Add the WKT geometry text column used by downstream retrieval (Weather,
-      # Soil map, AHN, Agricultural fields all read the polygon as WKT).
+      # Weather and Agricultural fields read the polygon as WKT).
       poly <- polygon_add_wkt(poly)
       render_fixed_polys(poly, fit = TRUE, show_hint = TRUE)
     }

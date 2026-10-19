@@ -18,7 +18,9 @@ test_that("the datasets of the NatureDataCube have collections, the others none"
   expect_equal(export_dataset_collections("NDVI", "Statistics", "Loobos_1"), "ndvi-lter")
   expect_equal(export_dataset_collections("NDVI", "Statistics", "SNL parcel_3"), "ndvi-snl")
   expect_equal(export_dataset_collections("NDVI", "Statistics", "Own polygon"), character(0))  # no project area
-  for (ds in c("Weather", "Soil map", "AHN", "Agricultural fields", "Area", "Vegetation structure")) {
+  expect_equal(export_dataset_collections("Soil map"), "soiltypes")
+  expect_equal(export_dataset_collections("AHN", "Statistics"), "ahnmetrics")
+  for (ds in c("Weather", "Agricultural fields", "Area", "Vegetation structure")) {
     expect_equal(export_dataset_collections(ds), character(0))
   }
 })
@@ -46,7 +48,7 @@ test_that("references and licenses are added to the rows that were retrieved", {
 test_that("nothing is requested when no dataset is described by the NatureDataCube", {
   local_stac_api()
   webmockr::request_registry_clear()
-  s <- summary_of(list("Soil map", "Geodata", "Own polygon", "ok"))
+  s <- summary_of(list("Agricultural fields", "Geodata", "Own polygon", "ok"))
   out <- export_add_references(s, ndc_token = "t")
   expect_identical(out$summary, s)
   expect_null(out$metadata)
@@ -72,7 +74,7 @@ test_that("CITATIONS.txt gives the reference of every retrieved dataset, and say
                   list("Land Use", "Geodata", "Own polygon", "ok"),
                   list("Nitrogen", "Geodata", "Own polygon", "ok"),
                   list("Nitrogen", "Geodata", "Other polygon", "ok"),
-                  list("Soil map", "Geodata", "Own polygon", "ok"),
+                  list("Agricultural fields", "Geodata", "Own polygon", "ok"),
                   list("NDVI", "Statistics", "Own polygon", "ok"),
                   list("Weather", "Statistics", "Own polygon", "failed"))
   meta <- export_add_references(s, "t")$metadata
@@ -85,7 +87,7 @@ test_that("CITATIONS.txt gives the reference of every retrieved dataset, and say
   expect_match(all, "Collection(s): ntot, nox, nh3\nRIVM (2025). Nitrogen deposition. License: CC-BY-4.0.", fixed = TRUE)
   expect_equal(sum(text == "Nitrogen"), 1)
   # without a reference: the AgroDataCube dataset and the statistics of a polygon that is no project area
-  expect_match(all, "Soil map: retrieved from the AgroDataCube (https://agrodatacube.wur.nl/).", fixed = TRUE)
+  expect_match(all, "Agricultural fields: retrieved from the AgroDataCube (https://agrodatacube.wur.nl/).", fixed = TRUE)
   expect_match(all, "NDVI: no reference is available.", fixed = TRUE)
   # not the dataset that failed, nor the reference polygon
   expect_false(grepl("Weather", all, fixed = TRUE))

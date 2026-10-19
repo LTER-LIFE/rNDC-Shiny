@@ -2,13 +2,13 @@
 
 test_that("retrieve_row returns the data without writing anything when there is no work folder", {
   local_webmock()
-  webmockr::stub_request("get", uri_regex = adc_re("soiltypes")) |>
-    webmockr::to_return(body = json_body(geojson_features(1:3, "soiltype")), headers = json_header)
+  webmockr::stub_request("get", uri_regex = adc_re("fields")) |>
+    webmockr::to_return(body = json_body(geojson_features(1:3, "fieldid")), headers = json_header)
 
-  res <- retrieve_row(overview_row("Soil map"), 7, workdir = NULL, ndc_token = "t", adc_token = "t")
-  expect_equal(res$name, "Soil map_7")
+  res <- retrieve_row(overview_row("Agricultural fields", year = 2023L), 7, workdir = NULL, ndc_token = "t", adc_token = "t")
+  expect_equal(res$name, "Agricultural fields_7")
   expect_equal(nrow(res$data), 3)
-  expect_equal(res$messages, "Retrieved: Soil map")
+  expect_equal(res$messages, "Retrieved: Agricultural fields")
   expect_length(res$manifest, 1)
   expect_equal(res$manifest[[1]]$status, "ok")
   expect_true(is.na(res$manifest[[1]]$file_path))
@@ -16,23 +16,26 @@ test_that("retrieve_row returns the data without writing anything when there is 
 
 test_that("retrieve_row writes the data, and the reference polygon once per polygon", {
   local_webmock()
-  webmockr::stub_request("get", uri_regex = adc_re("soiltypes")) |>
-    webmockr::to_return(body = json_body(geojson_features(1:3, "soiltype")), headers = json_header)
-  webmockr::stub_request("get", uri_regex = adc_re("ahn")) |>
-    webmockr::to_return(body = json_body(geojson_features(1, "ahn")), headers = json_header)
+  webmockr::stub_request("get", uri_regex = adc_re("fields")) |>
+    webmockr::to_return(body = json_body(geojson_features(1:3, "fieldid")), headers = json_header)
+  local_mocked_bindings(ndc_ahn_stats = function(roi, ..., save_params = NULL) {
+    if (!is.null(save_params)) writeLines("{}", save_params)
+    tibble::tibble(layer = "dtm", year = "2019", area = 1, min = 0, max = 1, mean = 0.5, sd = 0.1, n_cells = 4)
+  }, .package = "rNDC")
   dir <- withr::local_tempdir()
 
-  first <- retrieve_row(overview_row("Soil map", name = "Area A"), 1, dir, "t", "t")
+  first <- retrieve_row(overview_row("Agricultural fields", year = 2023L, name = "Area A"), 1, dir, "t", "t")
   second <- retrieve_row(overview_row("AHN", "Statistics", name = "Area A"), 2, dir, "t", "t")
 
-  expect_equal(vapply(first$manifest, function(m) m$dataset, ""), c("Area", "Soil map"))
+  expect_equal(vapply(first$manifest, function(m) m$dataset, ""), c("Area", "Agricultural fields"))
   expect_equal(vapply(second$manifest, function(m) m$dataset, ""), "AHN")  # polygon already exported
-  expect_setequal(list.files(dir), c("area_a.gpkg", "soil_map_geodata_area_a.gpkg", "ahn_statistics_area_a.csv", "parameters"))
+  expect_setequal(list.files(dir), c("area_a.gpkg", "agricultural_fields_geodata_area_a.gpkg", "ahn_statistics_area_a.csv", "parameters"))
   expect_setequal(list.files(file.path(dir, "parameters")),
-                  c("soil_map_geodata_area_a.json", "ahn_statistics_area_a.json"))   # next to the data, by the same name
-  expect_equal(first$manifest[[2]]$parameters, "parameters/soil_map_geodata_area_a.json")
+                  c("agricultural_fields_geodata_area_a.json", "ahn_statistics_area_a.json"))   # next to the data, by the same name
+  expect_equal(first$manifest[[2]]$parameters, "parameters/agricultural_fields_geodata_area_a.json")
   expect_equal(first$manifest[[1]]$note, "selected polygon geometry")
-  expect_equal(first$manifest[[2]]$file_path, "soil_map_geodata_area_a.gpkg")
+  expect_equal(first$manifest[[2]]$file_path, "agricultural_fields_geodata_area_a.gpkg")
+  expect_equal(utils::read.csv(file.path(dir, "ahn_statistics_area_a.csv"))$polygon, "Area A")
 })
 
 test_that("retrieve_row reports an error of the retrieval or of the writing for that row only", {

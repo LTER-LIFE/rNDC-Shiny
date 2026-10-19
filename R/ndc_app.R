@@ -5,12 +5,12 @@
 #' `shiny::runApp()`, tests).
 #'
 #' The app needs the environment variable `NDC_TOKEN` (NatureDataCube API token). `ADC_TOKEN`
-#' (AgroDataCube API token) is optional: without it the datasets from AgroDataCube (Weather, Soil map,
-#' AHN and Agricultural fields) are disabled. `SHINY_APP_BASE_URL` sets the proxy path when the app runs
+#' (AgroDataCube API token) is optional: without it the two datasets that only the AgroDataCube has (Weather and
+#' Agricultural fields) are disabled; all the others come from the NatureDataCube. `SHINY_APP_BASE_URL` sets the proxy path when the app runs
 #' behind a reverse proxy (e.g. `/naturedatacube`). `NDC_MAX_UPLOAD_MB` sets the largest upload (default 100 MB;
 #' Shiny's own default is 5 MB). `NDC_MAX_REQUEST_SECONDS` sets the longest retrieval that
 #' is accepted (default 300 seconds): the overview is estimated when a dataset is added, and a retrieval keeps
-#' the app busy until it is done. `NDC_MAX_AREA_KM2` sets the largest polygon (default 1000 km2) for which datasets can be
+#' the app busy until it is done. `NDC_MAX_AREA_KM2` sets the largest polygon (default 2000 km2) for which datasets can be
 #' added (Weather excepted): a drawn or uploaded polygon can be any size, and a huge area makes a huge download.
 #'
 #' In a non-interactive session (a deployment, e.g. the Docker image) the retrievals run in background R processes,
@@ -40,7 +40,7 @@ ndc_setup <- function() {
          call. = FALSE)
   }
   if (!nzchar(Sys.getenv("ADC_TOKEN"))) {
-    warning("ADC_TOKEN is not set: Weather, Soil map, AHN and Agricultural fields are disabled.",
+    warning("ADC_TOKEN is not set: Weather and Agricultural fields are disabled.",
             call. = FALSE)
   }
   app_base_url <- Sys.getenv("SHINY_APP_BASE_URL")

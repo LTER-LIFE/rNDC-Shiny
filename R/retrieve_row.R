@@ -33,6 +33,7 @@ retrieve_row <- function(row, index, workdir = NULL, ndc_token, adc_token, param
   # Filename base includes the polygon name; all output filenames lowercase.
   polygon_name <- tolower(safe_filename(as.character(polygon)))
   file_base <- tolower(safe_filename(paste0(ds, "_", view, "_", polygon_name)))
+  more <- list()   # the data of the files after the first one of a dataset that comes as several (see retrieve_outcome_data())
 
   manifest <- list()
   messages <- character(0)
@@ -54,16 +55,28 @@ retrieve_row <- function(row, index, workdir = NULL, ndc_token, adc_token, param
       data <- outcome$data
       name <- paste0(outcome$name, "_", index)
       if (save_files) {
-        file <- export_unique_file(workdir, file_base, outcome$ext, date_label)
+        file <- export_unique_file(workdir, if (is.null(outcome$suffix)) file_base else paste0(file_base, "_", outcome$suffix),
+                                   outcome$ext, date_label)
         ok <- outcome$writer(file)
         placed <- if (ok && !is.null(stem)) export_place_parameters(stem, workdir, file) else NA_character_
         manifest <- c(manifest, list(summary_row(outcome$ext, basename(file), if (ok) "ok" else "failed",
                                                  parameters = placed)))
         messages <- c(messages, if (ok) outcome$ok_msg else outcome$fail_msg)
+        for (extra in outcome$extras) {
+          file <- export_unique_file(workdir, paste0(file_base, "_", extra$suffix), extra$ext, date_label)
+          ok <- extra$writer(file)
+          manifest <- c(manifest, list(summary_row(extra$ext, basename(file), if (ok) "ok" else "failed")))
+          messages <- c(messages, if (ok) extra$ok_msg else extra$fail_msg)
+        }
       } else {
         if (!is.null(stem)) recorded <- export_read_parameters(stem)
         manifest <- c(manifest, list(summary_row(outcome$ext, NA_character_, "ok")))
         messages <- c(messages, outcome$ok_msg)
+        for (extra in outcome$extras) {
+          more[[paste0(extra$name, "_", index)]] <- extra$data
+          manifest <- c(manifest, list(summary_row(extra$ext, NA_character_, "ok")))
+          messages <- c(messages, extra$ok_msg)
+        }
       }
     }
   }, error = function(e) {
@@ -71,7 +84,7 @@ retrieve_row <- function(row, index, workdir = NULL, ndc_token, adc_token, param
     manifest <<- c(manifest, list(summary_row(NA_character_, NA_character_, "failed", note = e$message)))
   })
 
-  list(data = data, name = name, manifest = manifest, messages = messages, parameters = recorded)
+  list(data = data, name = name, more = more, manifest = manifest, messages = messages, parameters = recorded)
 }
 
 # Path for the file of a dataset in `dir`. The names are built from the dataset, the view and the polygon,

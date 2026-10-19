@@ -15,7 +15,8 @@ dataset_target_id <- function(name, tab) paste0("tab_target_", gsub("[^a-z0-9]+"
 # Which tab(s) each dataset exposes. NDVI has both Statistics + Geodata; others one.
 dataset_tabs <- function(name) {
   if (identical(name, "NDVI")) return(c("Statistics", "Geodata"))
-  if (name %in% c("Weather", "AHN")) return("Statistics")
+  if (identical(name, "AHN")) return(c("Statistics", "Geodata"))
+  if (identical(name, "Weather")) return("Statistics")
   "Geodata"
 }
 
@@ -86,8 +87,15 @@ delayedAssign("landuse_default_year", rNDC::ndc_landuse_default_year())
 
 delayedAssign("nitrogen_layer_choices", rNDC::ndc_nitrogen_layers())
 
-# Datasets that come from AgroDataCube and therefore need an ADC token.
-adc_datasets <- c("Weather", "Soil map", "AHN", "Agricultural fields")
+delayedAssign("ndc_soil_collection", rNDC::ndc_soil_collection())
+
+delayedAssign("ndc_ahn_collection", rNDC::ndc_ahn_collection())
+
+# Datasets that come from AgroDataCube and therefore need an ADC token (the others come from the NatureDataCube).
+adc_datasets <- c("Weather", "Agricultural fields")
+
+# What the layers of the AHN are
+ahn_layer_labels <- list(dtm = "terrain height", ohn = "object height")
 
 dataset_info <- list(
   "Weather" = list(title = "Weather", description = "KNMI weather data for the selected area (daily aggregates).", notes = "Choose a date or a period."),
@@ -95,8 +103,8 @@ dataset_info <- list(
   "NDVI" = list(title = "NDVI", description = "Monthly average NDVI.", notes = "Statistics: monthly NDVI summaries per polygon for LTER/SNL project areas. Geodata: monthly average NDVI raster layers. Supports single-month or range queries."),
   "Vegetation structure" = list(title = "Vegetation structure", description = "Structural vegetation measurements.", notes = "Retrieval not yet wired in this simplified version."),
   "Ground water table" = list(title = "Ground water table", description = "Groundwater depth information.", notes = "Retrieval not yet wired in this version."),
-  "Soil map" = list(title = "Soil map", description = "Soil classification and description layers for the selected area (Soiltypes).", notes = ""),
-  "AHN" = list(title = "AHN", description = "Elevation data of the Netherlands (AHN).", notes = ""),
+  "Soil map" = list(title = "Soil map", description = "Soil map of the Netherlands (Bodemkaart, 1:50,000) for the selected area, from the NatureDataCube: a raster with 5 m cells and the code of the soil type in each cell.", notes = "Retrieval gives the raster and a table with the name of the soil type of each code. A code that the table does not list (16 and above) has no name in the NatureDataCube."),
+  "AHN" = list(title = "AHN", description = "Heights of the Netherlands (AHN), from the NatureDataCube: the terrain height (AHN3, 5 m cells) and the object height of vegetation and buildings (AHN4, 2.5 m cells), in metres.", notes = "Statistics: the area and the minimum, maximum, mean and standard deviation of the heights in the selected area. Geodata: one raster for each layer. For a large area the rasters are requested with larger cells."),
   "Agricultural fields" = list(title = "Agricultural fields", description = "Data about agricultural fields e.g. crop type.", notes = "Requires a year."),
   "Land Use" = list(title = "Land Use", description = "Land use raster layer (LGN) for the selected area.", notes = "Select a year.")
 )

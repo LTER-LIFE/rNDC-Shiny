@@ -27,8 +27,9 @@ test_that("raster availability depends on the year and names the missing layers"
 })
 
 # the services, answering as they do in the Netherlands
-mock_services <- function(env = parent.frame(), soil = 1, ahn = list(area = 1, min = 1), fields = 1, distance = 12000,
-                          stac = data.frame(collection = c("lgn", "ntot", "nox", "nh3"), year = "2024", n_items = 1)) {
+mock_services <- function(env = parent.frame(), fields = 1, distance = 12000,
+                          stac = data.frame(collection = c("lgn", "ntot", "nox", "nh3", "soiltypes", "ahnmetrics"),
+                                            year = "2024", n_items = 1)) {
   rec <- new.env()
   rec$calls <- character(0)
   testthat::local_mocked_bindings(
@@ -36,11 +37,9 @@ mock_services <- function(env = parent.frame(), soil = 1, ahn = list(area = 1, m
       if (!is.null(option)) {
         rec$calls <- c(rec$calls, option)
         rec$params <- params
-        n <- switch(option, Soiltypes = soil, Fields = fields)
-        return(list(features = if (n > 0) lapply(seq_len(n), function(i) list(properties = list(a = 1))) else list()))
+        return(list(features = if (fields > 0) lapply(seq_len(fields), function(i) list(properties = list(a = 1))) else list()))
       }
-      rec$calls <- c(rec$calls, "AHN")
-      list(features = list(list(properties = ahn)))
+      stop("only Fields is asked of the AgroDataCube")
     },
     adc_weather_station = function(roi, token, ...) {
       rec$calls <- c(rec$calls, "stations")
@@ -82,13 +81,14 @@ test_that("every dataset gets a status for an area in the Netherlands", {
 
 test_that("the services say no, and the check says so", {
   local_clean_cache()
-  mock_services(soil = 0, ahn = list(), fields = 0, distance = 80000, stac = data.frame(collection = character(0), year = character(0), n_items = numeric(0)))
+  mock_services(fields = 0, distance = 80000, stac = data.frame(collection = character(0), year = character(0), n_items = numeric(0)))
   table <- availability_check(area(), "t", "t", years = list("Agricultural fields" = 2023, "Land Use" = "2024", "Nitrogen" = "2024"))
   for (dataset in c("Weather", "Nitrogen", "Soil map", "AHN", "Agricultural fields", "Land Use")) {
     expect_equal(status_of_dataset(table, dataset), "no", info = dataset)
   }
   expect_match(table$detail[table$dataset == "Weather"], "closest weather station is 80 km from the selected area (the limit is 30 km).", fixed = TRUE)
-  expect_match(table$detail[table$dataset == "AHN"], "No elevation")
+  expect_match(table$detail[table$dataset == "AHN"], "No AHN data found for the selected area.", fixed = TRUE)
+  expect_match(table$detail[table$dataset == "Soil map"], "No Soil map data found for the selected area.", fixed = TRUE)
 })
 
 test_that("failed requests are unknown, not no, and are not cached", {
@@ -109,10 +109,10 @@ test_that("a failed check says why, and a request that fails once is tried again
   rm(list = ls(availability_errors), envir = availability_errors)
   calls <- 0
   local_mocked_bindings(adc_get = function(...) { calls <<- calls + 1; stop("HTTP 503") }, .package = "rNDC")
-  expect_message(row <- availability_soil(sf::st_geometry(selected_polygon()), "k-fail", "t"), "HTTP 503")
+  expect_message(row <- availability_fields(sf::st_geometry(selected_polygon()), "k-fail", "t", 2023), "HTTP 503")
   expect_equal(calls, 2)
   expect_equal(row$status, "unknown")
-  expect_match(row$detail, "Could not check for Soil map data (HTTP 503", fixed = TRUE)
+  expect_match(row$detail, "Could not check for Agricultural fields (HTTP 503", fixed = TRUE)
 
   calls <- 0
   local_mocked_bindings(adc_get = function(...) {
@@ -120,7 +120,7 @@ test_that("a failed check says why, and a request that fails once is tried again
     if (calls == 1) stop("HTTP 503")
     list(features = list(list(properties = list(a = 1))))
   }, .package = "rNDC")
-  expect_equal(availability_soil(sf::st_geometry(selected_polygon()), "k-retry", "t")$status, "yes")
+  expect_equal(availability_fields(sf::st_geometry(selected_polygon()), "k-retry", "t", 2023)$status, "yes")
   expect_equal(calls, 2)
 })
 
@@ -128,10 +128,11 @@ test_that("without an AgroDataCube token its datasets do not apply, and Fields w
   local_clean_cache()
   rec <- mock_services()
   table <- availability_check(area(), "t", "", years = list())
-  for (dataset in c("Weather", "Soil map", "AHN", "Agricultural fields")) {
+  for (dataset in c("Weather", "Agricultural fields")) {
     expect_equal(status_of_dataset(table, dataset), "na", info = dataset)
   }
-  expect_false(any(c("AHN", "Soiltypes", "stations", "Fields") %in% rec$calls))
+  expect_equal(unname(table$status[table$dataset %in% c("Soil map", "AHN")]), c("yes", "yes"))   # they come from the NatureDataCube
+  expect_false(any(c("stations", "Fields") %in% rec$calls))
   expect_equal(status_of_dataset(table, "Land Use"), "yes")
 
   table <- availability_check(area(), "t", "t", years = list())

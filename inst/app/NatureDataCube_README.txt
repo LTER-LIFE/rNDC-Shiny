@@ -11,7 +11,7 @@ You can select an existing project area, draw your own polygon on the map, or up
    - Click a project under "Projects" to show that project's polygons on the map or
    - Draw your own polygon using the draw toolbar on the map (use the polygon tool: click each corner and finish on the first one; the trash can removes drawn polygons) or
    - Upload polygon files using the Upload panel. Supported formats: .gpkg, .shp (with .shx, .dbf and preferably .prj), .geojson, .kml, or a .zip containing these. Every polygon of a file can be selected on its own. A file without a coordinate system is taken to be in WGS84.
-   - Datasets can be added for polygons up to the area limit shown in the panels (Weather has no limit); AgroDataCube datasets (Agricultural fields, Soil map, AHN) receive a simplified polygon if yours has very many vertices.
+   - Datasets can be added for polygons up to the area limit shown in the panels (Weather has no limit); the AgroDataCube dataset Agricultural fields receives a simplified polygon if yours has very many vertices.
    - Click polygons on the map to select / deselect them. Selected polygons are highlighted blue and will be used for dataset queries.
 
    - After you select an area, the datasets in the list are marked: a check mark when data was found, a cross when none was found, a question mark when the check could not be made. Point at a dataset to read why. A dataset marked with a cross can still be added.

@@ -55,19 +55,9 @@ test_that("the AgroDataCube datasets send the shortened polygon and say so", {
   expect_lte(nchar(rec$calls[[1]]$geometry), adc_max_wkt_chars)
   expect_match(fields$ok_msg, "^Retrieved: Agricultural fields \\(polygon simplified by up to")
 
-  row$dataset <- "Soil map"
-  soil <- retrieve_soil_map(row, "t")
-  expect_lte(nchar(rec$calls[[2]]$geometry), adc_max_wkt_chars)
-  expect_match(soil$ok_msg, "simplified")
-
-  row$dataset <- "AHN"
-  ahn <- retrieve_ahn(row, "t")
-  expect_lte(nchar(rec$calls[[3]]$url), 8000)
-  expect_match(ahn$ok_msg, "simplified")
-
   # a simple polygon is sent as it is, with the plain message
   plain <- overview_row("Agricultural fields", year = 2023L)
   out <- retrieve_agricultural_fields(plain, "t")
-  expect_equal(rec$calls[[4]]$geometry, plain$wkt)
+  expect_equal(rec$calls[[2]]$geometry, plain$wkt)
   expect_equal(out$ok_msg, "Retrieved: Agricultural fields")
 })

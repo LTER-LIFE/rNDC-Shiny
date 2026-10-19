@@ -7,10 +7,14 @@
 
 # The dataset was retrieved. `name` is the prefix of its name in the returned list (the row number is
 # added), `ext` the file extension, `ok_msg` / `fail_msg` the messages for a retrieved dataset / a file that
-# could not be written, and `writer` the function that writes it (`function(path)`, TRUE if it worked).
-retrieve_outcome_data <- function(data, name, ext, ok_msg, fail_msg, writer = NULL) {
+# could not be written, and `writer` the function that writes it (`function(path)`, TRUE if it worked). A dataset
+# that comes as several files (the layers of the AHN, the legend of the soil map) has the first one as its data and
+# the others as `extras` (a list of outcomes like this one, each with a `suffix` for its file name); `suffix` also
+# names the file of the data itself.
+retrieve_outcome_data <- function(data, name, ext, ok_msg, fail_msg, writer = NULL, suffix = NULL, extras = NULL) {
   if (is.null(writer)) writer <- function(path) export_write_data(data, path)
-  list(data = data, name = name, ext = ext, ok_msg = ok_msg, fail_msg = fail_msg, writer = writer)
+  list(data = data, name = name, ext = ext, ok_msg = ok_msg, fail_msg = fail_msg, writer = writer, suffix = suffix,
+       extras = extras)
 }
 
 # Nothing was retrieved: `message` for the messages panel, `file_type` and `status` for the download
@@ -43,17 +47,52 @@ retrieve_agricultural_fields <- function(row, adc_token, stem = NULL) {
   retrieve_adc_outcome(row, response, geometry)
 }
 
-retrieve_ahn <- function(row, adc_token, stem = NULL) {
-  geometry <- adc_geometry(row)
-  url <- rNDC::adc_url("AHN", params = c(geometry = geometry$wkt, epsg = "4326"))
-  retrieve_adc_outcome(row, rNDC::adc_get(url = url, token = adc_token, save_params = retrieve_params_path(stem)), geometry)
+# AHN, from the NatureDataCube: the Statistics view is a table with the heights of the area (one row for the terrain
+# height and one for the object height); the Geodata view is the rasters (one file for each, as the cells differ).
+retrieve_ahn <- function(row, ndc_token, stem = NULL) {
+  poly <- row$polygon_sf[[1]]
+  if (tolower(as.character(row$view)) == "statistics") {
+    stats <- rNDC::ndc_ahn_stats(poly, token = ndc_token, save_params = retrieve_params_path(stem))
+    data <- cbind(polygon = row$polygon, as.data.frame(stats))
+    return(retrieve_outcome_data(data, "AHN", "csv", ok_msg = "Retrieved: AHN statistics",
+                                 fail_msg = "Failed: AHN - could not write output"))
+  }
+
+  res <- rNDC::ndc_ahn_raster(poly, token = ndc_token, output_dir = tempdir(), overwrite = TRUE, limit = 100,
+                              file_prefix = tempfile(), save_params = retrieve_params_path(stem))
+  layers <- res$metadata$layer
+  outcomes <- lapply(seq_along(res$rasters), function(i) {
+    retrieve_outcome_data(res$rasters[[i]], paste0("AHN_", layers[i]), "tif",
+                          ok_msg = paste0("Retrieved: AHN ", ahn_layer_labels[[layers[i]]], " raster ", res$metadata$year[i]),
+                          fail_msg = paste0("Failed: AHN ", layers[i], " - could not write output"), suffix = layers[i])
+  })
+  retrieve_with_extras(outcomes)
 }
 
-retrieve_soil_map <- function(row, adc_token, stem = NULL) {
-  geometry <- adc_geometry(row)
-  response <- rNDC::adc_get_all("Soiltypes", c(geometry = geometry$wkt, epsg = "4326", output_epsg = "4326"),
-                                token = adc_token, save_params = retrieve_params_path(stem))
-  retrieve_adc_outcome(row, response, geometry)
+# The first of several outcomes, with the others as its extras
+retrieve_with_extras <- function(outcomes) {
+  outcome <- outcomes[[1]]
+  outcome$extras <- outcomes[-1]
+  outcome
+}
+
+# Soil map, from the NatureDataCube: the raster with the code of the soil type in each cell, and a table with the names
+# of the soil types (the legend) as a second file.
+retrieve_soil_map <- function(row, ndc_token, stem = NULL) {
+  res <- rNDC::ndc_soil_raster(row$polygon_sf[[1]], token = ndc_token, output_dir = tempdir(), overwrite = TRUE, limit = 100,
+                               file_prefix = tempfile(), save_params = retrieve_params_path(stem))
+  raster <- if (is.null(res$stack)) res$rasters[[1]] else res$stack
+  # the file of the NatureDataCube has a colour table, which cannot be written with the codes above 255 (the legend is a table)
+  if (any(terra::has.colors(raster))) terra::coltab(raster) <- NULL
+  year <- paste(res$metadata$year, collapse = ", ")
+  outcomes <- list(retrieve_outcome_data(raster, "Soil map", "tif", ok_msg = paste0("Retrieved: Soil map raster ", year),
+                                         fail_msg = "Failed: Soil map - could not write output"))
+  if (!is.null(res$legend) && nrow(res$legend) > 0) {
+    outcomes[[2]] <- retrieve_outcome_data(res$legend, "Soil_map_legend", "csv", suffix = "legend",
+                                           ok_msg = "Retrieved: Soil map legend (the soil type of each code)",
+                                           fail_msg = "Failed: Soil map legend - could not write output")
+  }
+  retrieve_with_extras(outcomes)
 }
 
 retrieve_weather <- function(row, adc_token, stem = NULL) {
@@ -137,9 +176,10 @@ retrieve_ndvi_statistics <- function(row, stem = NULL) {
                })
 }
 
-# Monthly average NDVI rasters (one month, or a range of months), from GroenMonitor. The period is the one
-# stored in the overview row, not what the input widgets say at the time of the retrieval.
-retrieve_ndvi_rasters <- function(row, index, stem = NULL) {
+# Monthly average NDVI rasters (one month, or a range of months), found through the `ndvi` collection of the
+# NatureDataCube (its items are the daily GroenMonitor rasters). The period is the one stored in the overview row, not
+# what the input widgets say at the time of the retrieval.
+retrieve_ndvi_rasters <- function(row, index, ndc_token, stem = NULL) {
   poly <- row$polygon_sf[[1]]
   from <- row$date_from
   to <- row$date_to
@@ -148,7 +188,7 @@ retrieve_ndvi_rasters <- function(row, index, stem = NULL) {
     year <- as.integer(format(from, "%Y"))
     month <- as.integer(format(from, "%m"))
     label <- paste0(year, "-", sprintf("%02d", month))
-    r <- rNDC::gm_ndvi_month(poly, year, month, save_params = retrieve_params_path(stem))
+    r <- rNDC::ndc_ndvi_month(poly, year, month, token = ndc_token, save_params = retrieve_params_path(stem))
     if (is.null(r)) {
       msg <- "No data available for this month"
       return(retrieve_outcome_none(paste0("NDVI ", label, ": ", msg), "tif", status = msg))
@@ -164,7 +204,7 @@ retrieve_ndvi_rasters <- function(row, index, stem = NULL) {
 
   err <- NULL
   stack <- tryCatch(
-    rNDC::gm_ndvi_stack(roi = poly, trange = c(from, to), save_params = retrieve_params_path(stem)),
+    rNDC::ndc_ndvi_stack(roi = poly, trange = c(from, to), token = ndc_token, save_params = retrieve_params_path(stem)),
     error = function(e) { err <<- conditionMessage(e); NULL }
   )
   if (is.null(stack) || terra::nlyr(stack) == 0) {
@@ -179,20 +219,20 @@ retrieve_ndvi_rasters <- function(row, index, stem = NULL) {
                fail_msg = "Failed: NDVI - could not write output")
 }
 
-retrieve_ndvi <- function(row, index, stem = NULL) {
-  if (tolower(as.character(row$view)) == "statistics") retrieve_ndvi_statistics(row, stem) else retrieve_ndvi_rasters(row, index, stem)
+retrieve_ndvi <- function(row, index, ndc_token, stem = NULL) {
+  if (tolower(as.character(row$view)) == "statistics") retrieve_ndvi_statistics(row, stem) else retrieve_ndvi_rasters(row, index, ndc_token, stem)
 }
 
 # Call the retrieval function of the dataset of `row`
 retrieve_dataset <- function(row, index, ndc_token, adc_token, stem = NULL) {
   switch(row$dataset,
     "Agricultural fields" = retrieve_agricultural_fields(row, adc_token, stem),
-    "AHN" = retrieve_ahn(row, adc_token, stem),
-    "Soil map" = retrieve_soil_map(row, adc_token, stem),
+    "AHN" = retrieve_ahn(row, ndc_token, stem),
+    "Soil map" = retrieve_soil_map(row, ndc_token, stem),
     "Weather" = retrieve_weather(row, adc_token, stem),
     "Nitrogen" = retrieve_nitrogen(row, ndc_token, stem),
     "Land Use" = retrieve_land_use(row, ndc_token, stem),
-    "NDVI" = retrieve_ndvi(row, index, stem),
+    "NDVI" = retrieve_ndvi(row, index, ndc_token, stem),
     retrieve_outcome_none(paste0("Skipped: ", row$dataset, " is not wired to a retrieval endpoint yet."),
                  NA_character_, status = "skipped")
   )

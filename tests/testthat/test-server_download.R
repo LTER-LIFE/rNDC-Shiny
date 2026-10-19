@@ -42,13 +42,13 @@ test_that("Agricultural fields are retrieved page by page, zipped, and the expor
 
 test_that("retrieve_and_save() can return the data without writing files", {
   local_webmock()
-  webmockr::stub_request("get", uri_regex = adc_re("soiltypes")) |>
-    webmockr::to_return(body = json_body(geojson_features(1:3, "soiltype")), headers = json_header)
+  webmockr::stub_request("get", uri_regex = adc_re("fields")) |>
+    webmockr::to_return(body = json_body(geojson_features(1:3)), headers = json_header)
   before <- export_dirs()
 
-  with_overview(overview_row("Soil map"), {
+  with_overview(overview_row("Agricultural fields", year = 2024L), {
     res <- retrieve_and_save(save_files = FALSE)
-    expect_equal(nrow(res$datasets$`Soil map_1`), 3)
+    expect_equal(nrow(res$datasets$`Agricultural fields_1`), 3)
     expect_true(res$produced_any)
     expect_null(res$out_dir)
   })
@@ -57,15 +57,15 @@ test_that("retrieve_and_save() can return the data without writing files", {
 
 test_that("a failing API call is reported for that dataset and nothing is zipped", {
   local_webmock()
-  webmockr::stub_request("get", uri_regex = adc_re("ahn")) |>
+  webmockr::stub_request("get", uri_regex = adc_re("fields")) |>
     webmockr::to_return(body = json_body(list(status = "Unknown token")), status = 403, headers = json_header)
 
-  with_overview(overview_row("AHN", view = "Statistics"), {
+  with_overview(overview_row("Agricultural fields", year = 2024L), {
     res <- retrieve_and_save(zipfile = zip, save_files = TRUE)
     expect_false(res$produced_any)
     expect_false(file.exists(zip))
-    expect_match(res$messages, "^Failed: AHN - .*403.*Unknown token")
-    expect_equal(res$summary$status[res$summary$dataset == "AHN"], "failed")
+    expect_match(res$messages, "^Failed: Agricultural fields - .*403.*Unknown token")
+    expect_equal(res$summary$status[res$summary$dataset == "Agricultural fields"], "failed")
   })
 })
 
@@ -112,7 +112,7 @@ test_that("weather for a date is written as csv", {
 test_that("a single NDVI month is retrieved from the dates of its overview row, not from the inputs", {
   requested <- NULL
   local_mocked_bindings(
-    gm_ndvi_month = function(roi, year, month, ...) {
+    ndc_ndvi_month = function(roi, year, month, ...) {
       requested <<- c(year, month)
       terra::rast(nrows = 2, ncols = 2, vals = 1:4)
     },
@@ -131,7 +131,7 @@ test_that("a single NDVI month is retrieved from the dates of its overview row, 
 test_that("an NDVI range is retrieved as a stack with NDVI_ layer names", {
   args <- NULL
   local_mocked_bindings(
-    gm_ndvi_stack = function(roi, trange, ...) {
+    ndc_ndvi_stack = function(roi, trange, ...) {
       args <<- c(as.integer(format(trange[1], "%Y")), as.integer(format(trange[1], "%m")),
                  as.integer(format(trange[2], "%Y")), as.integer(format(trange[2], "%m")))
       r <- terra::rast(nrows = 2, ncols = 2, nlyrs = 2, vals = 1:8)
@@ -226,20 +226,20 @@ test_that("the same dataset for two years gives two files in the download", {
 
 test_that("two different polygons with the same name both end up in the download", {
   local_webmock()
-  webmockr::stub_request("get", uri_regex = adc_re("soiltypes")) |>
-    webmockr::to_return(body = json_body(geojson_features(1:2, "soiltype")), headers = json_header)
-  second <- overview_row("Soil map")
+  webmockr::stub_request("get", uri_regex = adc_re("fields")) |>
+    webmockr::to_return(body = json_body(geojson_features(1:2)), headers = json_header)
+  second <- overview_row("Agricultural fields", year = 2024L)
   second$polygon_sf <- list(sf::st_as_sf(sf::st_as_sfc(sf::st_bbox(
     c(xmin = 6.1, ymin = 52.1, xmax = 6.2, ymax = 52.2), crs = sf::st_crs(4326)))))
   second$wkt <- sf::st_as_text(sf::st_geometry(second$polygon_sf[[1]]))
 
-  with_overview(list(overview_row("Soil map"), second), {
+  with_overview(list(overview_row("Agricultural fields", year = 2024L), second), {
     res <- retrieve_and_save(zipfile = zip, save_files = TRUE)
     dir <- withr::local_tempdir()
     utils::unzip(zip, exdir = dir)
-    expect_setequal(list.files(dir), c("own_polygon.gpkg", "own_polygon_2.gpkg", "soil_map_geodata_own_polygon.gpkg",
-                                       "soil_map_geodata_own_polygon_2.gpkg", "download_summary.csv", "CITATIONS.txt", "parameters"))
-    expect_setequal(list.files(file.path(dir, "parameters")), c("soil_map_geodata_own_polygon.json", "soil_map_geodata_own_polygon_2.json"))
+    expect_setequal(list.files(dir), c("own_polygon.gpkg", "own_polygon_2.gpkg", "agricultural_fields_geodata_own_polygon.gpkg",
+                                       "agricultural_fields_geodata_own_polygon_2024.gpkg", "download_summary.csv", "CITATIONS.txt", "parameters"))
+    expect_setequal(list.files(file.path(dir, "parameters")), c("agricultural_fields_geodata_own_polygon.json", "agricultural_fields_geodata_own_polygon_2024.json"))
     summary <- utils::read.csv(file.path(dir, "download_summary.csv"))
     expect_equal(sum(summary$dataset == "Area"), 2)
     expect_false(anyDuplicated(summary$file_path[!is.na(summary$file_path)]) > 0)
@@ -248,10 +248,10 @@ test_that("two different polygons with the same name both end up in the download
 
 test_that("the export folder is returned only when it still exists", {
   local_webmock()
-  webmockr::stub_request("get", uri_regex = adc_re("soiltypes")) |>
-    webmockr::to_return(body = json_body(geojson_features(1:2, "soiltype")), headers = json_header)
+  webmockr::stub_request("get", uri_regex = adc_re("fields")) |>
+    webmockr::to_return(body = json_body(geojson_features(1:2)), headers = json_header)
 
-  with_overview(overview_row("Soil map"), {
+  with_overview(overview_row("Agricultural fields", year = 2024L), {
     zipped <- retrieve_and_save(zipfile = zip, save_files = TRUE)
     expect_null(zipped$out_dir)  # removed after zipping
     expect_equal(zipped$zipfile, zip)
@@ -319,19 +319,19 @@ test_that("the download button only appears once something is in the overview", 
 
 test_that("downloading builds the zip once, checks it, and serves it", {
   local_webmock()
-  webmockr::stub_request("get", uri_regex = adc_re("soiltypes")) |>
-    webmockr::to_return(body = json_body(geojson_features(1:3, "soiltype")), headers = json_header)
+  webmockr::stub_request("get", uri_regex = adc_re("fields")) |>
+    webmockr::to_return(body = json_body(geojson_features(1:3)), headers = json_header)
 
   with_server({
-    overview(overview_row("Soil map"))
+    overview(overview_row("Agricultural fields", year = 2024L))
     expect_null(prepared_zip())
 
     session$setInputs(check_and_download = 1)
     zip <- prepared_zip()
     expect_true(file.exists(zip))
     expect_setequal(utils::unzip(zip, list = TRUE)$Name,
-                    c("soil_map_geodata_own_polygon.gpkg", "own_polygon.gpkg", "download_summary.csv", "CITATIONS.txt",
-                      "parameters/soil_map_geodata_own_polygon.json"))
+                    c("agricultural_fields_geodata_own_polygon.gpkg", "own_polygon.gpkg", "download_summary.csv", "CITATIONS.txt",
+                      "parameters/agricultural_fields_geodata_own_polygon.json"))
 
     served <- output$download_data  # the path of the file that would be sent
     expect_true(file.exists(served))

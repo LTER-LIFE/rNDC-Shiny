@@ -120,7 +120,7 @@ polygon_zoom_to <- function(sf_obj) {
 # The largest area (km2) of a polygon for which datasets can be added (not for Weather, which only uses the
 # centroid). A huge area means a huge download. Set another with the environment variable NDC_MAX_AREA_KM2, or the
 # option `rNDC.Shiny.max_area_km2`.
-default_max_area_km2 <- 1000
+default_max_area_km2 <- 2000
 
 max_area_km2 <- function() getOption("rNDC.Shiny.max_area_km2", default_max_area_km2)
 

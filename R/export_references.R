@@ -4,7 +4,7 @@
 # (AgroDataCube) have no such metadata.
 
 # The AgroDataCube datasets: not described in the NatureDataCube
-export_agrodatacube_datasets <- c("Weather", "Soil map", "AHN", "Agricultural fields")
+export_agrodatacube_datasets <- c("Weather", "Agricultural fields")
 
 # The STAC collections that describe a dataset of the app (none for a dataset without metadata there).
 # `view` and `polygon` tell the NDVI statistics (collection of the project of the polygon) from the rasters.
@@ -13,6 +13,8 @@ export_dataset_collections <- function(dataset, view = "Geodata", polygon = NA_c
   collections <- switch(as.character(dataset),
     "Land Use" = ndc_landuse_collection,
     "Nitrogen" = nitrogen_layer_choices,
+    "Soil map" = ndc_soil_collection,
+    "AHN" = ndc_ahn_collection,
     "NDVI" = if (statistics) project_ndvi_collection(polygon) else "ndvi",
     character(0)
   )

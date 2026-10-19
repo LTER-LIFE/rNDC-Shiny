@@ -18,7 +18,7 @@ Run R through the conda env: `conda run -n base_r Rscript -e '...'`. It has all 
 - Update rNDC to the latest release: `conda run -n base_r Rscript -e 'remotes::install_github("LTER-LIFE/rNDC", upgrade = "never")'` (add `ref = "v0.5.2"` for a tag). Check `packageDescription("rNDC")$RemoteSha` when behaviour differs from what the rNDC source says.
 - Container: `docker compose up --build` (or `podman compose`), reading `.env` (copy `.env.example`). The image installs rNDC from GitHub (`RNDC_REF`, default the tag of the rNDC release, `v0.5.2`; the image is named `rndc-shiny:<version of the app>` in `compose.yaml` and has the labels `org.opencontainers.image.version` and `nl.lter-life.rndc.ref`: update them together with `RNDC_REF` and `DESCRIPTION`), the other dependencies from `DESCRIPTION` (`remotes::install_deps()`, incl. `Remotes:`), then this package, and runs `rNDC.Shiny::ndc_gui(host = '0.0.0.0', port = 3838)`; the app is served at `http://localhost:3838/` (`SHINY_APP_BASE_URL` does not create a route, it only sets Shiny's `appBaseUrl` behind a reverse proxy). Docker is not available in the dev environment: the image is built by the `docker-build` workflow only. The build can use a GitHub token against the rate limit of the GitHub API (not kept in the image): `docker build --secret id=github_pat,env=GITHUB_PAT .`. The `docker-build` workflow builds the image with `GITHUB_TOKEN`, loads the package in it, runs a job in a fresh background process of the image, starts the container and checks that the page and the logo are served.
 - CI (`.github/workflows/`): `R-CMD-check.yaml` runs the offline check on push/PR; `live-checks.yaml` runs the live tests weekly (default branch) or on manual dispatch, using the `NDC_TOKEN`/`ADC_TOKEN` repository secrets; `docker-build.yaml` builds the image (no push) when the Docker files or the package change. Repo: https://github.com/LTER-LIFE/rNDC-Shiny.
-- Credentials come from env vars: `NDC_TOKEN` (NatureDataCube STAC API, also the default `token` of `rNDC::ndc_get()`, land use and nitrogen functions; **required**) and `ADC_TOKEN` (AgroDataCube: Fields, AHN, Soil map, Weather; **optional**, those datasets are disabled without it). Never write tokens to the repo or to outputs.
+- Credentials come from env vars: `NDC_TOKEN` (NatureDataCube STAC API, also the default `token` of `rNDC::ndc_get()`, land use and nitrogen functions; **required**) and `ADC_TOKEN` (AgroDataCube: Fields and Weather only, the datasets that the NatureDataCube does not have; **optional**, those two are disabled without it; `adc_datasets`). Never write tokens to the repo or to outputs.
 
 ## Architecture
 
@@ -47,9 +47,13 @@ Dataset -> rNDC function:
 
 | Dataset | Function |
 |---|---|
-| Agricultural fields, Soil map, AHN | `adc_url()` + `adc_get()` (AgroDataCube REST) |
+| Agricultural fields | `adc_url()` + `adc_get_all()` (AgroDataCube REST) |
+| AHN (Statistics / Geodata) | `ndc_ahn_stats()` / `ndc_ahn_raster()` (collection `ahnmetrics`: terrain height and object height, different grids, so one file each) |
+| Soil map | `ndc_soil_raster()` (collection `soiltypes`: codes; the legend comes as a second file) |
+
+A dataset that comes as several files returns an outcome with `extras` (`retrieve_outcome_data()`; `retrieve_with_extras()`): `retrieve_row()` writes each as `<base>_<suffix>.<ext>` with its own manifest row (the parameters file belongs to the first), and without files returns the others in `more` (named `<name>_<index>`), which `retrieve_overview()` adds to the results.
 | Weather | `adc_weather_station()`, `adc_weather_date()`, `adc_weather_long_period()` |
-| NDVI (Geodata) | `gm_ndvi_month()`, `gm_ndvi_stack()` (GroenMonitor WCS) |
+| NDVI (Geodata) | `ndc_ndvi_month()`, `ndc_ndvi_stack()` (the `ndvi` collection of the NatureDataCube: the daily GroenMonitor rasters) |
 | NDVI (Statistics) | `ndc_get()` on `ndvi-lter` / `ndvi-snl` |
 | Land Use | `ndc_landuse_raster()` (collection `lgn`) |
 | Nitrogen | `ndc_nitrogen_raster()` (collections `ntot`, `nox`, `nh3`) |

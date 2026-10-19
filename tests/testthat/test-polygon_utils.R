@@ -73,14 +73,14 @@ test_that("polygons above the limit are named", {
   expect_equal(polygon_too_large(sel, limit = 0.1), c("Own polygon", "Big"))
   expect_equal(polygon_too_large(sel, limit = 1e6), character(0))
   expect_equal(polygon_too_large(NULL), character(0))
-  expect_match(polygon_too_large_message("Big", 1000), "the polygon Big is larger than the limit of 1,000 km")
+  expect_match(polygon_too_large_message("Big", 2000), "the polygon Big is larger than the limit of 2,000 km")
   expect_match(polygon_too_large_message(c("A", "B"), 5), "the polygons A, B are larger")
 })
 
 test_that("NDC_MAX_AREA_KM2 sets the limit; nonsense is ignored", {
   withr::local_envvar(NDC_TOKEN = "t", ADC_TOKEN = "t", SHINY_APP_BASE_URL = NA)
   withr::local_options(rNDC.Shiny.max_area_km2 = NULL)
-  expect_equal(max_area_km2(), 1000)
+  expect_equal(max_area_km2(), 2000)
 
   withr::local_envvar(NDC_MAX_AREA_KM2 = "250")
   ndc_setup()
@@ -90,7 +90,7 @@ test_that("NDC_MAX_AREA_KM2 sets the limit; nonsense is ignored", {
   for (bad in c("abc", "-5", "0", "")) {
     withr::local_envvar(NDC_MAX_AREA_KM2 = bad)
     ndc_setup()
-    expect_equal(max_area_km2(), 1000, info = bad)
+    expect_equal(max_area_km2(), 2000, info = bad)
   }
 })
 
@@ -133,6 +133,6 @@ test_that("the panels to upload and to draw are not disabled, and say what the l
   expect_false(grepl("disabled-category", html, fixed = TRUE))
   expect_match(html, "Upload your own polygon", fixed = TRUE)
   expect_match(html, "Draw your own polygon", fixed = TRUE)
-  expect_match(html, "up to 1,000 km2", fixed = TRUE)
+  expect_match(html, "up to 2,000 km2", fixed = TRUE)
   expect_match(html, paste0("at most ", max_upload_features, " polygons"), fixed = TRUE)
 })

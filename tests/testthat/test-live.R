@@ -107,7 +107,7 @@ test_that("the availability check finds data in the Netherlands and none abroad"
 
 test_that("there is data at the earliest dates and years that the app offers", {
   skip_unless_live()
-  # NDVI: GroenMonitor starts on 2017-05-26 (ndvi_min_month); it is not downloaded here, as that takes a minute.
+  # NDVI: the rasters start on 2017-05-26 (ndvi_min_month); it is not downloaded here, as that takes a minute.
   poly <- "POLYGON((5.70 52.00,5.72 52.00,5.72 52.02,5.70 52.02,5.70 52.00))"
   fields <- rNDC::adc_get_all("Fields", c(geometry = poly, epsg = "4326", year = as.character(fields_min_year),
                                     output_epsg = "4326"), token = Sys.getenv("ADC_TOKEN"))

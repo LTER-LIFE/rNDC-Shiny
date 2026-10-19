@@ -23,6 +23,7 @@ retrieve_overview <- function(ov, workdir, ndc_token, adc_token, progress = retr
       label, i, n, progress
     )
     if (!is.null(res$data)) results[[res$name]] <- res$data
+    for (extra in names(res$more)) results[[extra]] <- res$more[[extra]]
     if (length(res$parameters) > 0) recorded[[res$name]] <- res$parameters
     manifest_rows <- c(manifest_rows, res$manifest)
     messages <- c(messages, res$messages)

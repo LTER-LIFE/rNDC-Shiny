@@ -88,28 +88,6 @@ availability_weather <- function(geometry, key, token, max_km = weather_max_stat
   }
 }
 
-availability_soil <- function(geometry, key, token) {
-  cache <- cache_key("avail", "soil", key)
-  found <- availability_cached(cache, function() availability_adc_features("Soiltypes", geometry, NULL, token))
-  status <- availability_status_of(found)
-  list(status = status, detail = switch(status,
-    yes = "Soil map data is available for the selected area.",
-    no = "No Soil map data found for the selected area.",
-    availability_could_not("Soil map data", cache)))
-}
-
-availability_ahn <- function(geometry, key, token) {
-  # AHN answers with one feature for any area; without elevation data its properties are empty
-  has_values <- function(features) length(features) > 0 && length(Filter(Negate(is.null), features[[1]]$properties)) > 0
-  cache <- cache_key("avail", "ahn", key)
-  found <- availability_cached(cache, function() availability_adc_features("AHN", geometry, NULL, token, test = has_values))
-  status <- availability_status_of(found)
-  list(status = status, detail = switch(status,
-    yes = "Elevation (AHN) data is available for the selected area.",
-    no = "No elevation (AHN) data found for the selected area.",
-    availability_could_not("elevation (AHN) data", cache)))
-}
-
 availability_fields <- function(geometry, key, token, year) {
   if (is.null(year) || is.na(suppressWarnings(as.integer(year)))) {
     return(list(status = "unknown", detail = "Choose a year to check for Agricultural fields."))
@@ -123,7 +101,7 @@ availability_fields <- function(geometry, key, token, year) {
     availability_could_not("Agricultural fields", cache)))
 }
 
-# Land Use and Nitrogen: from the table of `stac_availability()`
+# Land Use, Nitrogen, Soil map and AHN: from the table of `stac_availability()`
 availability_raster <- function(dataset, collections, table, year) {
   if (is.null(table)) return(list(status = "unknown", detail = paste0("Could not check for ", dataset, " data.")))
   has_year <- !is.null(year) && nzchar(as.character(year))
@@ -148,7 +126,7 @@ availability_raster <- function(dataset, collections, table, year) {
   }
 }
 
-# NDVI: the rasters (GroenMonitor) cover the Netherlands; the statistics exist for the LTER and SNL project areas
+# NDVI: the rasters (the `ndvi` collection of the NatureDataCube, from GroenMonitor) cover the Netherlands; the statistics exist for the LTER and SNL project areas
 availability_ndvi <- function(geometry, area) {
   outline <- availability_nl_outline()
   rasters <- if (is.null(outline)) {
@@ -188,7 +166,8 @@ availability_check <- function(area, ndc_token, adc_token, years = list(), weath
   needs_adc <- list(status = "na", detail = "This dataset needs an AgroDataCube token (ADC_TOKEN).")
 
   stac <- availability_cached(cache_key("avail", "stac", key),
-                       function() rNDC::stac_availability(c(ndc_landuse_collection, nitrogen_layer_choices), geometry, ndc_token))
+                       function() rNDC::stac_availability(c(ndc_landuse_collection, nitrogen_layer_choices, ndc_soil_collection,
+                                                            ndc_ahn_collection), geometry, ndc_token))
 
   results <- list(
     "Weather" = if (adc_ok) availability_weather(geometry, key, adc_token, weather_max_km) else needs_adc,
@@ -196,8 +175,8 @@ availability_check <- function(area, ndc_token, adc_token, years = list(), weath
     "NDVI" = availability_ndvi(geometry, area),
     "Vegetation structure" = availability_unwired("Vegetation structure"),
     "Ground water table" = availability_unwired("Ground water table"),
-    "Soil map" = if (adc_ok) availability_soil(geometry, key, adc_token) else needs_adc,
-    "AHN" = if (adc_ok) availability_ahn(geometry, key, adc_token) else needs_adc,
+    "Soil map" = availability_raster("Soil map", ndc_soil_collection, stac, NULL),
+    "AHN" = availability_raster("AHN", ndc_ahn_collection, stac, NULL),
     "Agricultural fields" = if (adc_ok) availability_fields(geometry, key, adc_token, years[["Agricultural fields"]]) else needs_adc,
     "Land Use" = availability_raster("Land Use", ndc_landuse_collection, stac, years[["Land Use"]])
   )

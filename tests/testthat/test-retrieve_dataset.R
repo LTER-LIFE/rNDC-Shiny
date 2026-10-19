@@ -20,6 +20,95 @@ test_that("vector datasets are tables in the Statistics view and GeoPackages oth
   expect_equal(retrieve_vector_ext(overview_row("Soil map", "Geodata")), "gpkg")
 })
 
+# what rNDC gives for the AHN and the soil map
+height_rasters <- function() {
+  dtm <- terra::rast(nrows = 2, ncols = 2, vals = 1:4); names(dtm) <- "AHN_DTM_2019"
+  ohn <- terra::rast(nrows = 4, ncols = 4, vals = 1:16); names(ohn) <- "AHN_OHN_2022"
+  list(rasters = list(AHN_DTM_2019 = dtm, AHN_OHN_2022 = ohn), stack = NULL,
+       metadata = tibble::tibble(layer = c("dtm", "ohn"), year = c("2019", "2022")))
+}
+
+soil_legend <- function() tibble::tibble(code = c(1L, 14L), label = c("Veengronden", "Leemgronden"), color = c("#1920A7", "#FE021E"))
+
+test_that("AHN statistics are a table with the polygon, from the NatureDataCube", {
+  seen <- NULL
+  local_mocked_bindings(ndc_ahn_stats = function(roi, token, ...) {
+    seen <<- token
+    tibble::tibble(layer = c("dtm", "ohn"), year = c("2019", "2022"), area = 10, min = 0, max = 1, mean = 0.5, sd = 0.1, n_cells = 4)
+  }, .package = "rNDC")
+  out <- retrieve_ahn(overview_row("AHN", "Statistics", name = "Area A"), "ndc-token")
+  expect_equal(seen, "ndc-token")                       # no AgroDataCube token
+  expect_equal(out$ext, "csv")
+  expect_equal(out$data$polygon, c("Area A", "Area A"))
+  expect_equal(out$data$layer, c("dtm", "ohn"))
+  expect_equal(out$ok_msg, "Retrieved: AHN statistics")
+  expect_null(out$extras)
+})
+
+test_that("AHN rasters are one file for each layer, the first being the data of the row", {
+  local_mocked_bindings(ndc_ahn_raster = function(roi, token, ...) height_rasters(), .package = "rNDC")
+  out <- retrieve_ahn(overview_row("AHN", "Geodata"), "t")
+  expect_equal(c(out$name, out$ext, out$suffix), c("AHN_dtm", "tif", "dtm"))
+  expect_equal(out$ok_msg, "Retrieved: AHN terrain height raster 2019")
+  expect_length(out$extras, 1)
+  expect_equal(c(out$extras[[1]]$name, out$extras[[1]]$ext, out$extras[[1]]$suffix), c("AHN_ohn", "tif", "ohn"))
+  expect_equal(out$extras[[1]]$ok_msg, "Retrieved: AHN object height raster 2022")
+  expect_equal(terra::ncell(out$extras[[1]]$data), 16)
+})
+
+test_that("the soil map is a raster, with its legend as a table", {
+  local_mocked_bindings(ndc_soil_raster = function(roi, token, ...) {
+    r <- terra::rast(nrows = 2, ncols = 2, vals = c(1, 14, 14, 16))
+    terra::coltab(r) <- data.frame(value = c(1, 14, 16), col = c("#1920A7", "#FE021E", "#000000"))
+    list(rasters = list(SOIL_2025 = r), stack = r, metadata = tibble::tibble(year = "2025"), legend = soil_legend())
+  }, .package = "rNDC")
+  out <- retrieve_soil_map(overview_row("Soil map"), "t")
+  expect_equal(c(out$name, out$ext), c("Soil map", "tif"))
+  expect_false(any(terra::has.colors(out$data)))
+  expect_equal(out$ok_msg, "Retrieved: Soil map raster 2025")
+  expect_null(out$suffix)
+  expect_equal(c(out$extras[[1]]$ext, out$extras[[1]]$suffix), c("csv", "legend"))
+  expect_equal(out$extras[[1]]$data$label, c("Veengronden", "Leemgronden"))
+
+  local_mocked_bindings(ndc_soil_raster = function(roi, token, ...) {
+    r <- terra::rast(nrows = 2, ncols = 2, vals = 1:4)
+    list(rasters = list(SOIL_2025 = r), stack = r, metadata = tibble::tibble(year = "2025"), legend = NULL)
+  }, .package = "rNDC")
+  expect_length(retrieve_soil_map(overview_row("Soil map"), "t")$extras, 0)
+})
+
+test_that("the files of a dataset with several are written next to each other, and the data are returned for each", {
+  local_mocked_bindings(ndc_ahn_raster = function(roi, token, ..., save_params = NULL) {
+    if (!is.null(save_params)) writeLines("{}", save_params)
+    height_rasters()
+  }, ndc_soil_raster = function(roi, token, ..., save_params = NULL) {
+    r <- terra::rast(nrows = 2, ncols = 2, vals = c(1, 14, 14, 16))
+    list(rasters = list(SOIL_2025 = r), stack = r, metadata = tibble::tibble(year = "2025"), legend = soil_legend())
+  }, .package = "rNDC")
+  dir <- withr::local_tempdir()
+  ahn <- retrieve_row(overview_row("AHN", "Geodata", name = "Area A"), 1, dir, "t", "")       # no AgroDataCube token needed
+  soil <- retrieve_row(overview_row("Soil map", name = "Area A"), 2, dir, "t", "")
+
+  expect_setequal(list.files(dir), c("area_a.gpkg", "ahn_geodata_area_a_dtm.tif", "ahn_geodata_area_a_ohn.tif",
+                                     "soil_map_geodata_area_a.tif", "soil_map_geodata_area_a_legend.csv", "parameters"))
+  expect_equal(vapply(ahn$manifest, function(m) m$file_path, ""), c("area_a.gpkg", "ahn_geodata_area_a_dtm.tif", "ahn_geodata_area_a_ohn.tif"))
+  expect_equal(vapply(soil$manifest, function(m) m$file_type, ""), c("tif", "csv"))
+  expect_equal(vapply(ahn$manifest, function(m) m$status, ""), c("ok", "ok", "ok"))
+  expect_equal(ahn$manifest[[2]]$parameters, "parameters/ahn_geodata_area_a_dtm.json")   # the call is recorded once
+  expect_true(is.na(ahn$manifest[[3]]$parameters))
+  expect_equal(terra::ncell(terra::rast(file.path(dir, "ahn_geodata_area_a_ohn.tif"))), 16)
+  expect_equal(utils::read.csv(file.path(dir, "soil_map_geodata_area_a_legend.csv"))$code, c(1, 14))
+
+  # without files: the data of every file is returned, by name
+  none <- retrieve_row(overview_row("AHN", "Geodata"), 3, workdir = NULL, ndc_token = "t", adc_token = "")
+  expect_equal(none$name, "AHN_dtm_3")
+  expect_named(none$more, "AHN_ohn_3")
+  expect_length(none$manifest, 2)
+  packaged <- retrieve_and_package(rbind(overview_row("AHN", "Geodata"), overview_row("Soil map")), save_files = FALSE,
+                                   ndc_token = "t", adc_token = "")
+  expect_named(packaged$datasets, c("AHN_dtm_1", "AHN_ohn_1", "Soil map_2", "Soil_map_legend_2"))
+})
+
 test_that("retrieve_dataset reports datasets that have no retrieval", {
   out <- retrieve_dataset(overview_row("Vegetation structure"), 1, "t", "t")
   expect_null(out$data)
@@ -95,21 +184,21 @@ test_that("rasters: land use falls back to the default year, and messages name t
 test_that("NDVI rasters: a single month, a range, and an invalid period", {
   calls <- character()
   local_mocked_bindings(
-    gm_ndvi_month = function(roi, year, month, ...) { calls <<- c(calls, paste("month", year, month)); NULL },
-    gm_ndvi_stack = function(roi, trange, ...) {
+    ndc_ndvi_month = function(roi, year, month, ...) { calls <<- c(calls, paste("month", year, month)); NULL },
+    ndc_ndvi_stack = function(roi, trange, ...) {
       calls <<- c(calls, paste("stack", as.integer(format(trange[1], "%Y")), as.integer(format(trange[1], "%m")), as.integer(format(trange[2], "%Y")), as.integer(format(trange[2], "%m"))))
       NULL
     },
     .package = "rNDC"
   )
-  month <- retrieve_ndvi_rasters(overview_row("NDVI", from = date("2025-06-01"), to = date("2025-06-30")), 4)
+  month <- retrieve_ndvi_rasters(overview_row("NDVI", from = date("2025-06-01"), to = date("2025-06-30")), 4, "t")
   expect_equal(month$message, "NDVI 2025-06: No data available for this month")
   expect_equal(month$status, "No data available for this month")  # the summary shows the reason
 
-  range <- retrieve_ndvi_rasters(overview_row("NDVI", from = date("2025-06-01"), to = date("2025-08-31")), 4)
+  range <- retrieve_ndvi_rasters(overview_row("NDVI", from = date("2025-06-01"), to = date("2025-08-31")), 4, "t")
   expect_equal(range$message, "NDVI - No data available for this period (2025-06-01 to 2025-08-31)")
 
-  invalid <- retrieve_ndvi_rasters(overview_row("NDVI"), 4)
+  invalid <- retrieve_ndvi_rasters(overview_row("NDVI"), 4, "t")
   expect_equal(invalid$message, "Failed: NDVI - invalid date range for row 4")
   expect_equal(invalid$status, "failed")
 

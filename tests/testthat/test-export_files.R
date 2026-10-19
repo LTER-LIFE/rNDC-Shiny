@@ -3,26 +3,26 @@
 
 date <- as.Date
 
-soil_stub <- function() {
-  webmockr::stub_request("get", uri_regex = adc_re("soiltypes")) |>
+fields_stub <- function() {
+  webmockr::stub_request("get", uri_regex = adc_re("fields")) |>
     webmockr::to_return(body = json_body(geojson_features(1)), headers = json_header)
 }
 
 test_that("a download has the parameters of every dataset, named after its data, and they repeat the retrieval", {
   local_webmock()
-  soil_stub()
+  fields_stub()
   dir <- withr::local_tempdir()
-  res <- retrieve_row(overview_row("Soil map", name = "Area A"), 1, dir, "t", "t")
+  res <- retrieve_row(overview_row("Agricultural fields", year = 2023L, name = "Area A"), 1, dir, "t", "t")
 
-  expect_equal(list.files(file.path(dir, "parameters")), "soil_map_geodata_area_a.json")
-  expect_equal(res$manifest[[2]]$parameters, "parameters/soil_map_geodata_area_a.json")
+  expect_equal(list.files(file.path(dir, "parameters")), "agricultural_fields_geodata_area_a.json")
+  expect_equal(res$manifest[[2]]$parameters, "parameters/agricultural_fields_geodata_area_a.json")
   expect_true(is.na(res$manifest[[1]]$parameters))                          # the reference polygon
   expect_length(list.files(dir, pattern = "^\\.params", all.files = TRUE), 0) # nothing left of the work
 
-  file <- file.path(dir, "parameters", "soil_map_geodata_area_a.json")
+  file <- file.path(dir, "parameters", "agricultural_fields_geodata_area_a.json")
   recorded <- jsonlite::fromJSON(file, simplifyVector = FALSE)
   expect_equal(recorded$schema, "rNDC-adc_get_all/1")
-  expect_equal(recorded$option, "Soiltypes")
+  expect_equal(recorded$option, "Fields")
   expect_false(grepl("token", paste(readLines(file), collapse = ""), ignore.case = TRUE))
 
   # what the file says is what was sent: repeating it asks the same
@@ -75,14 +75,14 @@ test_that("the parameters of a dataset that was not retrieved are not kept", {
 
 test_that("without the option there are no parameters, and the functions are not asked to record any", {
   local_webmock()
-  soil_stub()
+  fields_stub()
   seen <- list()
   local_mocked_bindings(adc_get_all = function(..., save_params = NULL) {
     seen <<- c(seen, list(is.null(save_params)))
     list(type = "FeatureCollection", features = geojson_features(1)$features)
   }, .package = "rNDC")
   dir <- withr::local_tempdir()
-  res <- retrieve_row(overview_row("Soil map"), 1, dir, "t", "t", parameters = FALSE)
+  res <- retrieve_row(overview_row("Agricultural fields", year = 2023L), 1, dir, "t", "t", parameters = FALSE)
   expect_false(dir.exists(file.path(dir, "parameters")))
   expect_true(seen[[1]])   # (the argument was NULL)
   expect_true(all(is.na(vapply(res$manifest, function(m) m$parameters, ""))))
@@ -90,15 +90,15 @@ test_that("without the option there are no parameters, and the functions are not
 
 test_that("when nothing is written the parameters are returned as texts, and nothing is left behind", {
   local_webmock()
-  soil_stub()
+  fields_stub()
   before <- list.files(tempdir(), "^ndc_params_")
-  res <- retrieve_and_package(overview_row("Soil map"), save_files = FALSE, ndc_token = "t", adc_token = "t")
-  expect_named(res$parameters, "Soil map_1")
-  expect_named(res$parameters[["Soil map_1"]], "data")
-  expect_equal(jsonlite::fromJSON(res$parameters[["Soil map_1"]]$data)$option, "Soiltypes")
+  res <- retrieve_and_package(overview_row("Agricultural fields", year = 2023L), save_files = FALSE, ndc_token = "t", adc_token = "t")
+  expect_named(res$parameters, "Agricultural fields_1")
+  expect_named(res$parameters[["Agricultural fields_1"]], "data")
+  expect_equal(jsonlite::fromJSON(res$parameters[["Agricultural fields_1"]]$data)$option, "Fields")
   expect_identical(list.files(tempdir(), "^ndc_params_"), before)
 
-  none <- retrieve_and_package(overview_row("Soil map"), save_files = FALSE, ndc_token = "t", adc_token = "t",
+  none <- retrieve_and_package(overview_row("Agricultural fields", year = 2023L), save_files = FALSE, ndc_token = "t", adc_token = "t",
                                parameters = FALSE)
   expect_length(none$parameters, 0)
 })
