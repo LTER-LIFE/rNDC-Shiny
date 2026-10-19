@@ -47,13 +47,14 @@ test_that("the note counts the datasets, and says what the datasets of other ser
 
 test_that("the dialog lists the datasets of the selected area, from the STAC API and the known coverage", {
   local_clean_cache()
+  mock_check()
   item <- raster_item("a", "2024-01-01")
   item$collection <- "lgn"
   local_stac_api(pages = list(list(item)))
 
   with_server({
     selected_polygons(selected_polygon())
-    session$setInputs(show_catalogue = 1)
+    session$setInputs(check_availability = 1)
     html <- as.character(output$catalogue_table)
     expect_match(html, "lgn", fixed = TRUE)
     expect_match(html, "✓ yes", fixed = TRUE)
@@ -67,11 +68,12 @@ test_that("the dialog lists the datasets of the selected area, from the STAC API
 
 test_that("the period is passed on when the user asks for one, and each question is cached", {
   local_clean_cache()
+  mock_check()
   local_stac_api(pages = list(list()))
 
   with_server({
     selected_polygons(selected_polygon())
-    session$setInputs(show_catalogue = 1, catalogue_limit = TRUE,
+    session$setInputs(check_availability = 1, catalogue_limit = TRUE,
                       catalogue_period = as.Date(c("2024-06-01", "2024-06-30")))
     invisible(output$catalogue_table)
     expect_equal(last_request_body()$datetime, "2024-06-01T00:00:00Z/2024-06-30T00:00:00Z")
@@ -90,10 +92,11 @@ test_that("the period is passed on when the user asks for one, and each question
 
 test_that("the dialog says to select an area first, and why the datasets could not be listed", {
   local_clean_cache()
+  mock_check()
   local_stac_api(pages = list(list()), status = 500L)
 
   with_server({
-    session$setInputs(show_catalogue = 1)
+    session$setInputs(check_availability = 1)
     expect_match(as.character(output$catalogue_note$html), "Select an area on the map first.", fixed = TRUE)
 
     selected_polygons(selected_polygon())
@@ -105,13 +108,14 @@ test_that("the dialog says to select an area first, and why the datasets could n
 
 test_that("text from the services is not read as HTML", {
   local_clean_cache()
+  mock_check()
   evil <- ref_collection("lgn")
   evil$title <- "<script>alert(1)</script>"
   local_stac_api(pages = list(list()), collections = list(evil))
 
   with_server({
     selected_polygons(selected_polygon())
-    session$setInputs(show_catalogue = 1)
+    session$setInputs(check_availability = 1)
     html <- as.character(output$catalogue_table)
     expect_false(grepl("<script>", html, fixed = TRUE))
     expect_match(html, "&lt;script&gt;", fixed = TRUE)

@@ -1,11 +1,11 @@
-# "Which datasets exist for the selected area?": a dialog with the table of rNDC::ndc_available() for the selected
-# polygons and, if the user wants, a period (R/catalogue.R). It is asked when the dialog is opened and when the area
-# or period changes, not on every selection, and cached per area and period.
+# The dialog of the "Check availability" button (which also marks the datasets, see R/server_availability.R): the
+# table of rNDC::ndc_available() for the selected polygons and, if the user wants, a period (R/catalogue.R). It is asked
+# when the dialog is opened and when the area or period changes, not on every selection, and cached per area and period.
 server_catalogue <- function(input, output, session, state, helpers) {
   selected_polygons <- state$selected_polygons
   mytoken <- state$mytoken
 
-  observeEvent(input$show_catalogue, {
+  observeEvent(input$check_availability, {
     showModal(modalDialog(
       title = "Datasets for the selected area",
       uiOutput("catalogue_note"),

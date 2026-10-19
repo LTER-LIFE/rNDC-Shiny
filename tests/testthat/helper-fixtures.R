@@ -276,3 +276,21 @@ three_rows <- function() {
                    overview_row("Soil map"),
                    overview_row("Land Use", year = 2024L, name = "Other polygon"))
 }
+
+# the check of the app: the first dataset of each call gets the status that `statuses` says for the polygon in turn
+mock_check <- function(statuses = "yes", env = parent.frame()) {
+  rec <- new.env()
+  rec$calls <- list()
+  rec$i <- 0
+  testthat::local_mocked_bindings(availability_check = function(area, ndc_token, adc_token, years = list(),
+                                                                weather_max_km = 30, datasets = all_dataset_names, view = NULL) {
+    rec$i <- rec$i + 1
+    rec$calls[[rec$i]] <- list(datasets = datasets, years = years, view = view, km = weather_max_km, n = nrow(area))
+    status <- statuses[[min(rec$i, length(statuses))]]
+    if (is.null(status)) stop("boom")
+    detail <- c(yes = " data is available for the selected area.", no = " has no data for the selected area.",
+                unknown = " could not be checked.")[[status]]
+    availability_row(datasets, status, paste0(datasets, detail))
+  }, .env = env)
+  rec
+}

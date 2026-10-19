@@ -21,11 +21,10 @@ test_that("the estimate counts the requests of Weather and of the NDVI rasters, 
   expect_equal(est("NDVI", "Geodata", d(NA), d(NA)), 0)
 
   # everything else is quick
-  expect_equal(est(c("AHN", "Soil map", "Land Use", "Nitrogen", "Agricultural fields"), "Geodata", d(NA), d(NA)),
-               rep(0, 5))
+  expect_equal(est(c("Land Use", "Nitrogen", "Agricultural fields"), "Geodata", d(NA), d(NA)), rep(0, 3))
 
   # vectorised over the rows of an overview, also an empty one
-  expect_equal(est(c("Weather", "AHN", "NDVI"), c("Statistics", "Statistics", "Geodata"),
+  expect_equal(est(c("Weather", "Land Use", "NDVI"), c("Statistics", "Statistics", "Geodata"),
                    c(d("2024-05-01"), d(NA), d("2025-06-01")), c(d("2024-05-01"), d(NA), d("2025-06-30"))),
                c(w, 0, 30 * n))
   expect_equal(est(character(), character(), d(character()), d(character())), numeric())
@@ -156,4 +155,41 @@ test_that("a flood of reports without a count updates the page only now and then
   }, "NDVI (A)", 1, 1)
   expect_lt(rec$n, 10)
   expect_gte(rec$n, 1)
+})
+
+# a polygon (EPSG:4326) of about `km` x `km` kilometres near Utrecht
+square_km <- function(km) {
+  x <- 5.2; y <- 52.0
+  sf::st_as_sf(sf::st_as_sfc(sf::st_bbox(c(xmin = x, ymin = y, xmax = x + km / 68.5, ymax = y + km / 111.2), crs = sf::st_crs(4326))))
+}
+
+test_that("the AHN and the soil map take longer for a larger area, up to the cells that rNDC requests", {
+  r <- request_seconds[["raster_request"]]
+  m <- request_seconds[["raster_million_cells"]]
+  est <- function(dataset, km, view = "Geodata") retrieve_estimate_seconds(dataset, view, d(NA), d(NA), list(square_km(km)))
+
+  # a small area: a request for each raster (two for the AHN)
+  expect_equal(est("Soil map", 1), r + m * (1e6 / 25) / 1e6, tolerance = 0.01)
+  expect_equal(est("AHN", 1), 2 * r + m * (1e6 / 25 + 1e6 / 6.25) / 1e6, tolerance = 0.01)
+  expect_equal(est("AHN", 1, "Statistics"), est("AHN", 1))
+  # the measured times of an area of 2100 km2: 16 s for each AHN raster and 13 s for the soil map
+  expect_equal(est("AHN", 46), 32, tolerance = 0.2)
+  expect_equal(est("Soil map", 46), 13, tolerance = 0.2)
+  # more area, more time, but not beyond the cells that are requested
+  expect_gt(est("AHN", 10), est("AHN", 1))
+  expect_equal(est("AHN", 200), 2 * (r + m * raster_max_cells / 1e6))
+  # without the polygons a raster counts as a request
+  expect_equal(retrieve_estimate_seconds("Soil map", "Geodata", d(NA), d(NA)), r)
+  expect_equal(retrieve_raster_seconds(5, NULL), r)
+  # vectorised, with the polygons of each row
+  expect_equal(retrieve_estimate_seconds(c("AHN", "Land Use", "Soil map"), "Geodata", d(rep(NA, 3)), d(rep(NA, 3)),
+                                         list(square_km(1), square_km(1), square_km(1))),
+               c(est("AHN", 1), 0, est("Soil map", 1)))
+})
+
+test_that("a retrieval of the largest area allowed is warned about, but not refused", {
+  seconds <- sum(retrieve_estimate_seconds(c("AHN", "AHN", "Soil map"), c("Statistics", "Geodata", "Geodata"),
+                                           d(rep(NA, 3)), d(rep(NA, 3)), rep(list(square_km(46)), 3)))
+  expect_gt(seconds, warn_request_seconds)
+  expect_lt(seconds, max_request_seconds())
 })

@@ -428,9 +428,12 @@ app_ui <- function() {
         ),
         leafletOutput("map", height = "400px"),
         uiOutput("snl_status"),
+        tags$div(style = "margin-top:8px;",
+                 actionButton("check_availability", "Check availability", class = "btn-custom"),
+                 tags$span(style = "margin-left:8px; font-size:12px; color:#5a6472;", "which datasets have data for the selected area")),
         br(),
         h4("Choose dataset(s)"),
-        helpText("Once you have selected an area, the datasets are marked: \u2713 data found, \u2717 none found (the dataset can still be added), ? could not be checked. Point at a dataset for the details."),
+        helpText("Click Check availability to mark the datasets for the selected area: \u2713 data found, \u2717 none found, ? could not be checked. Point at a dataset for the details. The marks go when you select other polygons or change a year or date (a warning says so), and come back when you check again or add a dataset; a dataset with no data for a polygon is not added."),
         tags$div(
           tags$details(class = "ndc-category",
                        tags$summary("Atmosphere"),
@@ -500,8 +503,6 @@ app_ui <- function() {
         hr(),
         uiOutput("dataset_metadata"),
         uiOutput("availability"),
-        tags$div(style = "margin-top:10px;",
-                 actionButton("show_catalogue", "Which datasets exist for the selected area?", class = "btn-custom")),
         tags$div(style = "margin-top:18px;", actionButton("add_dataset", "Add to overview", class = "btn-custom"))
       )
     ),

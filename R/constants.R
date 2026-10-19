@@ -58,7 +58,13 @@ weather_chunk_sleep <- 0.5
 # above `max_request_seconds()` is refused (option `rNDC.Shiny.max_request_seconds`, or the environment
 # variable NDC_MAX_REQUEST_SECONDS; the default is 300 seconds, or 900 when retrievals run in the background,
 # where they hold nobody up).
-request_seconds <- c(weather_chunk = 0.9, ndvi_day = 0.25)
+request_seconds <- c(weather_chunk = 0.9, ndvi_day = 0.25, raster_request = 2, raster_million_cells = 0.55)
+
+# The cells of a raster of the NatureDataCube (AHN, soil map) above which rNDC requests a lower resolution (its `max_cells`),
+# and the size of the cells (m) of each: they give the time of a retrieval (measured with 2100 km2: about 16 s for each
+# AHN raster and 13 s for the soil map; with 5e7 cells it took twice as long and twice the memory)
+raster_max_cells <- 2e7
+raster_cell_size <- list(AHN = c(dtm = 5, ohn = 2.5), "Soil map" = c(soil = 5))
 
 warn_request_seconds <- 60
 

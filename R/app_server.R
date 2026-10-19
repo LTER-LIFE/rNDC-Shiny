@@ -7,7 +7,8 @@ app_server <- function(input, output, session) {
   list2env(state, environment())
   helpers <- map_helpers_create(session, state)
 
-  server_availability(input, output, session, state, helpers)
+  # (the check of a dataset that is being added is used by server_dataset())
+  helpers$availability <- server_availability(input, output, session, state, helpers)
   server_catalogue(input, output, session, state, helpers)
   dataset <- server_dataset(input, output, session, state, helpers)
   server_projects(input, output, session, state, helpers)

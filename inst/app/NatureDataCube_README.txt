@@ -14,10 +14,10 @@ You can select an existing project area, draw your own polygon on the map, or up
    - Datasets can be added for polygons up to the area limit shown in the panels (Weather has no limit); the AgroDataCube dataset Agricultural fields receives a simplified polygon if yours has very many vertices.
    - Click polygons on the map to select / deselect them. Selected polygons are highlighted blue and will be used for dataset queries.
 
-   - After you select an area, the datasets in the list are marked: a check mark when data was found, a cross when none was found, a question mark when the check could not be made. Point at a dataset to read why. A dataset marked with a cross can still be added.
+   - Click "Check availability" (below the map) and the datasets in the list are marked: a check mark when data was found, a cross when none was found, a question mark when the check could not be made. Point at a dataset to read why. A dataset with no data for a polygon cannot be added for that polygon.
 
 2) Choosing a dataset (left sidebar)
-   - The button "Which datasets exist for the selected area?" (below the dataset settings) lists all datasets for the selected polygons, optionally for a period only. Datasets of the NatureDataCube are checked against their items; the AgroDataCube and GroenMonitor datasets are shown by the coverage that is known for them ("expected" / "outside its coverage"), without asking those services.
+   - The button "Check availability" (below the map) marks the datasets in the menu that have data for the selected polygons (check mark: data found, cross: none, question mark: could not be checked; point at a dataset for the details) and lists all datasets in a dialog, optionally for a period only. Datasets of the NatureDataCube are checked against their items; the AgroDataCube and GroenMonitor datasets are shown by the coverage that is known for them ("expected" / "outside its coverage"), without asking those services. The marks go (with a yellow warning) when you select other polygons or change a year or date, and come back when you check again. Adding a dataset also checks it: a polygon without data for it is not added.
    - Use the "Choose dataset for the selected area" menu to pick a dataset (e.g. Weather, NDVI).
    - Click the small (i) icon next to a dataset to see dataset metadata/description (information modal).
    - After choosing a dataset, pick the finer controls shown (date, year, month) in the right-hand panel that appears.

@@ -204,3 +204,19 @@ test_that("NDVI rasters: a single month, a range, and an invalid period", {
 
   expect_equal(calls, c("month 2025 6", "stack 2025 6 2025 8"))
 })
+
+test_that("the data of the rows is not kept when it is only written", {
+  local_mocked_bindings(ndc_ahn_raster = function(roi, token, ..., save_params = NULL) height_rasters(), .package = "rNDC")
+  ov <- overview_row("AHN", "Geodata")
+  written <- retrieve_and_package(ov, zipfile = NULL, save_files = TRUE, workdir = withr::local_tempdir(), ndc_token = "t",
+                                  return_data = FALSE, parameters = FALSE)
+  expect_length(written$datasets, 0)
+  expect_equal(written$summary$status, c("ok", "ok", "ok"))
+  expect_equal(sum(written$summary$file_type == "tif", na.rm = TRUE), 2)       # both rasters were written all the same
+
+  kept <- retrieve_and_package(ov, save_files = TRUE, workdir = withr::local_tempdir(), ndc_token = "t", return_data = TRUE,
+                               parameters = FALSE)
+  expect_named(kept$datasets, c("AHN_dtm_1", "AHN_ohn_1"))
+  not_returned <- retrieve_and_package(ov, save_files = FALSE, ndc_token = "t", return_data = FALSE, parameters = FALSE)
+  expect_length(not_returned$datasets, 0)
+})

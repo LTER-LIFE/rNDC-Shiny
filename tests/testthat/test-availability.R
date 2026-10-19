@@ -193,108 +193,295 @@ test_that("a long polygon is shortened for AgroDataCube like in a retrieval", {
   expect_lte(nchar(rec$params[["geometry"]]), adc_max_wkt_chars)
 })
 
-test_that("the row of a dataset, and the warning for one without data", {
-  table <- data.frame(dataset = c("AHN", "Weather"), status = c("no", "yes"), detail = c("No elevation (AHN) data found for the selected area.", "ok"))
-  expect_equal(availability_of(table, "AHN")$status, "no")
-  expect_null(availability_of(table, "Land Use"))
-  expect_null(availability_of(NULL, "AHN"))
-  expect_equal(availability_no_data_warning(availability_of(table, "AHN")),
-               "No elevation (AHN) data found for the selected area. It is added anyway: the services may still have data for it.")
+test_that("only the datasets that are asked for are checked, and only their requests are made", {
+  local_clean_cache()
+  rec <- mock_services()
+  weather <- availability_check(area(), "t", "t", datasets = "Weather")
+  expect_equal(weather$dataset, "Weather")
+  expect_equal(rec$calls, "stations")                       # no search of the STAC API
+
+  rec$calls <- character(0)
+  rasters <- availability_check(area(), "t", "t", datasets = c("Land Use", "AHN"))
+  expect_equal(rasters$dataset, c("AHN", "Land Use"))       # in the order of the menu
+  expect_equal(rec$calls, "stac")                            # one search for both
+
+  rec$calls <- character(0)
+  expect_equal(availability_check(area(), "t", "t", datasets = "NDVI")$dataset, "NDVI")
+  expect_length(rec$calls, 0)                                # the outline of the country needs no request
 })
 
-test_that("the app checks the selected area, and says what it found for the selected dataset", {
+test_that("the rasters of the Netherlands are not found for an area outside it, although their items cover part of the sea", {
   local_clean_cache()
-  rec <- new.env()
-  local_mocked_bindings(availability_check = function(area, ndc_token, adc_token, years = list(), weather_max_km = 30) {
-    rec$years <- years
-    rec$km <- weather_max_km
-    rec$n <- if (is.null(rec$n)) 1 else rec$n + 1
-    rbind(availability_row("Land Use", "yes", "Land Use data for 2024 is available for the selected area."),
-          availability_row("AHN", "no", "No elevation (AHN) data found for the selected area."),
-          availability_row("Weather", "unknown", "Could not check for a weather station."))
-  })
-  sel <- selected_polygon()
+  mock_services()                                   # the search finds the items wherever the area is
+  at_sea <- area("Sea", x = 4.2, y = 53.3)
+  table <- availability_check(at_sea, "t", "t", years = list("Land Use" = "2024"), datasets = c("AHN", "Soil map", "Land Use", "Nitrogen"))
+  expect_equal(unname(setNames(table$status, table$dataset)[c("Soil map", "AHN", "Land Use")]), rep("no", 3))
+  expect_match(table$detail[table$dataset == "AHN"], "No AHN data found for the selected area: it is outside the Netherlands.", fixed = TRUE)
+  expect_equal(status_of_dataset(table, "Nitrogen"), "yes")             # (the nitrogen rasters are not limited to the land)
+  expect_equal(status_of_dataset(availability_check(area(), "t", "t", datasets = "AHN"), "AHN"), "yes")
+})
 
+test_that("NDVI statistics exist for project areas only, and the rasters for the Netherlands", {
+  local_clean_cache()
+  mock_services()
+  own <- area("Own polygon_1")
+  project <- area("Nestboxes_3")
+  geometry <- function(a) sf::st_union(sf::st_geometry(a))
+  expect_equal(availability_ndvi(geometry(own), own, "Geodata")$status, "yes")
+  expect_equal(availability_ndvi(geometry(own), own, "Statistics")$status, "no")
+  expect_match(availability_ndvi(geometry(own), own, "Statistics")$detail, "only for LTER and SNL project areas")
+  expect_equal(availability_ndvi(geometry(project), project, "Statistics")$status, "yes")
+  expect_equal(availability_ndvi(geometry(own), own)$status, "yes")                    # either view will do
+  abroad <- area("Own polygon_1", x = 4.6, y = 50.6)
+  expect_equal(availability_ndvi(geometry(abroad), abroad, "Geodata")$status, "no")
+})
+
+test_that("the checks of datasets are merged, and those of several polygons combined", {
+  old <- data.frame(dataset = c("Weather", "AHN"), status = c("yes", "no"), detail = c("w", "a"), area = "A")
+  new <- data.frame(dataset = c("Land Use", "AHN"), status = c("yes", "yes"), detail = c("l", "a2"), area = "B")
+  merged <- availability_merge(old, new)
+  expect_equal(merged$dataset, c("Weather", "AHN", "Land Use"))     # in the order of the menu
+  expect_equal(merged$detail, c("w", "a2", "l"))                    # the new check replaces the old
+  expect_equal(availability_merge(NULL, new)$dataset, c("AHN", "Land Use"))
+
+  row <- function(status, detail = status) availability_row("AHN", status, detail)
+  expect_equal(availability_combine(list(row("yes", "ok"), row("yes", "ok")))$status, "yes")
+  expect_equal(availability_combine(list(row("no", "none"), row("no", "none")))$detail, "none")
+  mixed <- availability_combine(list(row("yes"), row("no"), row("no")))
+  expect_equal(mixed$status, "partial")
+  expect_equal(mixed$detail, "AHN data found for 1 of 3 selected polygons.")
+  expect_equal(availability_combine(list(row("no"), NULL))$status, "unknown")
+  expect_equal(availability_combine(list(NULL, NULL, row("yes")))$status, "partial")   # data for the one that was checked
+  expect_equal(availability_combine(list(NULL, row("no")))$status, "unknown")
+
+  expect_equal(availability_no_data_message(availability_row("AHN", "no", "No AHN data found for the selected area.")),
+               "No AHN data found for the selected area. Nothing was added: change the area, the year or the period, and try again.")
+  expect_match(availability_no_data_message(availability_row("AHN", "no", "No AHN data found."), c("A", "B")),
+               "No AHN data found (A, B). Nothing was added", fixed = TRUE)
+})
+
+# the notifications that the app shows, as list(text, type) in `rec$notes`
+mock_notes <- function(env = parent.frame()) {
+  rec <- new.env()
+  rec$notes <- list()
+  testthat::local_mocked_bindings(showNotification = function(ui, type = "default", ...) {
+    rec$notes[[length(rec$notes) + 1]] <- list(ui, type)
+  }, .env = env)
+  rec
+}
+
+test_that("nothing is checked until a button is clicked, and the marks go with another area, with a warning", {
+  local_clean_cache()
+  rec <- mock_check(list("yes", "no"))
+  notes <- mock_notes()
   with_server({
     session$setInputs(selected_dataset = "Land Use", landuse_year = "2024", nitrogen_year = "2025", selected_year = 2023)
+    selected_polygons(selected_polygon())
+    session$flushReact()
+    session$elapse(2000)
+    expect_length(rec$calls, 0)                           # selecting an area (or a year) checks nothing
     expect_null(availability())
     expect_null(output$availability$html)
+    expect_length(notes$notes, 0)                         # no marks, nothing to warn about
 
-    selected_polygons(sel)
+    session$setInputs(check_availability = 1)
+    expect_length(rec$calls, 1)
+    expect_equal(rec$calls[[1]]$datasets, all_dataset_names)
+    expect_equal(rec$calls[[1]]$years, list("Agricultural fields" = 2023, "Land Use" = "2024", "Nitrogen" = "2025"))
+    expect_equal(availability()$dataset, all_dataset_names)
+    expect_match(as.character(output$availability$html), "available for the selected area", fixed = TRUE)
+    expect_match(as.character(output$availability$html), "#2e7d32", fixed = TRUE)                      # green
+    expect_match(as.character(output$availability$html), "Checked for: Own polygon", fixed = TRUE)
+    expect_length(notes$notes, 0)
+
+    # another selection: the marks and the sentence go, with a warning (yellow), and nothing is asked
+    selected_polygons(selected_polygon("Other polygon"))
     session$flushReact()
-    expect_null(availability())  # after a pause, so that polygons can be selected one after another
-    session$elapse(500)
-    expect_equal(availability()$status, c("yes", "no", "unknown"))
-    expect_equal(rec$years, list("Agricultural fields" = 2023, "Land Use" = "2024", "Nitrogen" = "2025"))
-    expect_match(as.character(output$availability$html), "Land Use data for 2024 is available for the selected area.",
+    expect_null(availability())
+    expect_null(output$availability$html)
+    expect_length(rec$calls, 1)
+    expect_length(notes$notes, 1)
+    expect_equal(notes$notes[[1]][[2]], "warning")
+    expect_match(notes$notes[[1]][[1]], "The selected area changed, so the availability of the datasets is no longer known. Click Check availability",
                  fixed = TRUE)
-    expect_match(as.character(output$availability$html), "#2e7d32", fixed = TRUE)  # green
 
-    session$setInputs(selected_dataset = "AHN")
-    expect_match(as.character(output$availability$html), "No elevation (AHN) data found", fixed = TRUE)
-    expect_match(as.character(output$availability$html), "#b26a00", fixed = TRUE)
-
-    session$setInputs(selected_dataset = "Weather")
-    expect_null(output$availability$html)  # unknown: say nothing
-
-    # the selection ends: the result goes
+    # no marks any more: another selection says nothing
     selected_polygons(NULL)
     session$flushReact()
-    session$elapse(500)
+    expect_length(notes$notes, 1)
+
+    # the button checks the polygons that are selected then
+    selected_polygons(selected_polygon("Third polygon"))
+    session$setInputs(check_availability = 2)
+    expect_length(rec$calls, 2)
+    expect_match(as.character(output$availability$html), "#b26a00", fixed = TRUE)                      # orange: none found
+    expect_match(as.character(output$availability$html), "Checked for: Third polygon", fixed = TRUE)
+  })
+})
+
+test_that("a changed year or date clears the marks with a warning, but an input that appears is no change", {
+  local_clean_cache()
+  rec <- mock_check("yes")
+  notes <- mock_notes()
+  with_server({
+    selected_polygons(selected_polygon())
+    session$setInputs(selected_dataset = "Land Use")
+    session$setInputs(landuse_year = "2024")                         # the input appears (the dataset is chosen)
+    session$setInputs(check_availability = 1)
+    expect_false(is.null(availability()))
+
+    session$setInputs(selected_dataset = "Nitrogen")
+    session$setInputs(nitrogen_year = "2025")                        # another input appears
+    session$setInputs(selected_dataset = "Weather")
+    session$setInputs(weather_mode = "single", weather_date = as.Date("2025-06-01"))
+    expect_false(is.null(availability()))                            # none of these is a change
+    expect_length(notes$notes, 0)
+
+    session$setInputs(weather_date = as.Date("2025-06-02"))          # a date that had a value
+    expect_null(availability())
+    expect_length(notes$notes, 1)
+    expect_equal(notes$notes[[1]][[2]], "warning")
+    expect_match(notes$notes[[1]][[1]], "The year, date or distance changed, so the availability", fixed = TRUE)
+    expect_length(rec$calls, 1)                                      # nothing was asked
+
+    # every kind of year and date does it: the input gets a value (it appears), the datasets are checked, the value changes
+    inputs <- list(landuse_year = list("2024", "2023"), nitrogen_year = list("2025", "2024"), selected_year = list(2023, 2022),
+                   ndvi_mode = list("single", "range"), ndvi_year = list(2022, 2021), ndvi_month = list(6, 5),
+                   ndvi_from_year = list(2020, 2019), ndvi_from_month = list(1, 2), ndvi_to_year = list(2021, 2022),
+                   ndvi_to_month = list(12, 3), weather_mode = list("single", "period"),
+                   weather_period = list(as.Date(c("2025-01-01", "2025-02-01")), as.Date(c("2025-01-01", "2025-03-01"))))
+    clicks <- 1
+    for (name in names(inputs)) {
+      do.call(session$setInputs, setNames(list(inputs[[name]][[1]]), name))
+      clicks <- clicks + 1
+      session$setInputs(check_availability = clicks)
+      expect_false(is.null(availability()), info = name)
+      do.call(session$setInputs, setNames(list(inputs[[name]][[2]]), name))
+      expect_null(availability(), info = name)
+    }
+
+    # the distance of the Weather settings is one too
+    session$setInputs(check_availability = clicks + 1)
+    session$setInputs(weather_max_km = 60)
     expect_null(availability())
   })
 })
 
-test_that("a changed year is checked again, and a failed check says nothing", {
+test_that("the marks that adding a dataset sets go with the next selection", {
   local_clean_cache()
-  rec <- new.env()
-  rec$n <- 0
-  local_mocked_bindings(availability_check = function(area, ndc_token, adc_token, years = list(), weather_max_km = 30) {
-    rec$n <- rec$n + 1
-    if (rec$n == 2) stop("boom")
-    availability_row("Land Use", "yes", paste("Land Use data for", years[["Land Use"]]))
-  })
-
+  rec <- mock_check(list("yes"))
   with_server({
     session$setInputs(selected_dataset = "Land Use", landuse_year = "2024")
     selected_polygons(selected_polygon())
     session$flushReact()
-    session$elapse(500)
-    expect_match(availability()$detail, "2024")
-
-    session$setInputs(landuse_year = "2025")
-    session$elapse(500)
-    expect_null(availability())  # the check failed
-    expect_null(output$availability$html)
-    expect_equal(rec$n, 2)
+    session$setInputs(add_dataset = 1)
+    expect_equal(availability()$dataset, "Land Use")
+    expect_equal(availability()$status, "yes")
+    selected_polygons(selected_polygon("Other polygon"))
+    session$flushReact()
+    expect_null(availability())
+    expect_length(rec$calls, 1)                           # only the check of the added dataset
   })
 })
 
-test_that("adding a dataset where no data was found warns, and adds it anyway", {
+test_that("the button without an area checks nothing, and a check that cannot be made says so and clears the marks", {
   local_clean_cache()
-  rec <- new.env()
-  rec$notes <- character(0)
-  local_mocked_bindings(showNotification = function(ui, ...) rec$notes <- c(rec$notes, ui))
-  local_mocked_bindings(availability_check = function(...) {
-    rbind(availability_row("Land Use", "no", "No Land Use data for 2024 found for the selected area."),
-          availability_row("Nitrogen", "yes", "Nitrogen data is available for the selected area."))
-  })
+  rec <- mock_check(list("yes", NULL))
+  rec_notes <- new.env()
+  rec_notes$notes <- character()
+  local_mocked_bindings(showNotification = function(ui, ...) rec_notes$notes <- c(rec_notes$notes, ui))
+  with_server({
+    session$setInputs(selected_dataset = "Land Use", check_availability = 1)
+    expect_length(rec$calls, 0)                           # the dialog says to select an area
 
+    selected_polygons(selected_polygon())
+    session$setInputs(check_availability = 2)
+    expect_false(is.null(availability()))
+    session$setInputs(check_availability = 3)
+    expect_null(availability())                           # the check failed: no marks from before
+    expect_match(rec_notes$notes, "could not be checked")
+  })
+})
+
+test_that("adding a dataset where the services have no data for the polygon does not add it, and says what to change", {
+  local_clean_cache()
+  rec <- mock_check(list("no", "yes", "unknown"))
+  rec_notes <- new.env()
+  rec_notes$notes <- list()
+  local_mocked_bindings(showNotification = function(ui, type = "default", ...) {
+    rec_notes$notes[[length(rec_notes$notes) + 1]] <- list(ui, type)
+  })
   with_server({
     session$setInputs(selected_dataset = "Land Use", landuse_year = "2024")
     selected_polygons(selected_polygon())
     session$flushReact()
-    session$elapse(500)
 
     session$setInputs(add_dataset = 1)
-    expect_equal(overview()$dataset, "Land Use")  # added
-    expect_true(any(grepl("It is added anyway", rec$notes)))
+    expect_equal(nrow(overview()), 0)                                 # not added
+    expect_equal(rec_notes$notes[[length(rec_notes$notes)]][[2]], "error")
+    expect_match(rec_notes$notes[[length(rec_notes$notes)]][[1]], "Land Use has no data for the selected area (Own polygon). Nothing was added: change the area, the year or the period", fixed = TRUE)
+    expect_equal(rec$calls[[1]]$datasets, "Land Use")                 # only the dataset that is added
+    expect_equal(rec$calls[[1]]$years, list("Land Use" = 2024L))
+    expect_equal(availability()$status, "no")                          # and the menu shows it
+    expect_match(as.character(output$availability$html), "has no data", fixed = TRUE)
 
-    rec$notes <- character(0)
-    session$setInputs(selected_dataset = "Nitrogen", nitrogen_year = "2024")
+    # data found: added
     session$setInputs(add_dataset = 2)
-    expect_equal(overview()$dataset, c("Land Use", "Nitrogen"))
-    expect_false(any(grepl("added anyway", rec$notes)))
+    expect_equal(overview()$dataset, "Land Use")
+    expect_equal(availability()$status, "yes")
+
+    # a check that could not tell does not stop it
+    session$setInputs(landuse_year = "2023")
+    session$setInputs(add_dataset = 3)
+    expect_equal(overview()$year, c(2024L, 2023L))
+  })
+})
+
+test_that("a check that fails does not stop a dataset from being added", {
+  local_clean_cache()
+  mock_check(list(NULL))
+  with_server({
+    session$setInputs(selected_dataset = "Land Use", landuse_year = "2024")
+    selected_polygons(selected_polygon())
+    session$setInputs(add_dataset = 1)
+    expect_equal(overview()$dataset, "Land Use")
+    expect_null(availability())
+  })
+})
+
+test_that("with several polygons the ones without data are left out, and the others are added", {
+  local_clean_cache()
+  rec <- mock_check(list("yes", "no", "yes"))
+  rec_notes <- new.env()
+  rec_notes$notes <- list()
+  local_mocked_bindings(showNotification = function(ui, type = "default", ...) {
+    rec_notes$notes[[length(rec_notes$notes) + 1]] <- list(ui, type)
+  })
+  second <- selected_polygon("Area B")
+  sf::st_geometry(second) <- sf::st_geometry(fixed_square(2, 5.9, 52.2))
+  second$wkt <- sf::st_as_text(sf::st_geometry(second))
+  both <- rbind(selected_polygon("Area A"), second)
+  both$layer_id <- 1:2
+  with_server({
+    session$setInputs(selected_dataset = "Soil map")
+    selected_polygons(both)
+    session$setInputs(add_dataset = 1)
+    expect_equal(rec$i, 2)                                            # one check for each polygon
+    expect_equal(overview()$polygon, c("Area A", "Area B")[c(TRUE, FALSE)])
+    expect_match(rec_notes$notes[[length(rec_notes$notes)]][[1]], "(Area B)", fixed = TRUE)
+    expect_equal(availability()$status, "partial")                    # data for one of the two
+    expect_match(availability()$detail, "found for 1 of 2 selected polygons")
+  })
+})
+
+test_that("NDVI is checked for the view that is added", {
+  local_clean_cache()
+  rec <- mock_check(list("yes"))
+  with_server({
+    session$setInputs(selected_dataset = "NDVI", ndvi_mode = "single", ndvi_year = 2024, ndvi_month = 6, `ndvi_tab` = "Statistics")
+    selected_polygons(selected_polygon())
+    session$setInputs(ndvi_tab = "Geodata", add_dataset = 1)
+    expect_equal(rec$calls[[1]]$view, "Geodata")
   })
 })
 
@@ -321,30 +508,22 @@ test_that("the Weather settings have a box for the distance, with 30 km as the d
   })
 })
 
-test_that("the distance of the box is used by the check, a bad value is ignored, and the last good one is kept", {
+test_that("the distance of the box is used by the checks, a bad value is ignored, and the last good one is kept", {
   local_clean_cache()
-  rec <- new.env()
-  rec$km <- numeric(0)
-  local_mocked_bindings(availability_check = function(area, ndc_token, adc_token, years = list(), weather_max_km = 30) {
-    rec$km <- c(rec$km, weather_max_km)
-    availability_row("Weather", "yes", "x")
-  })
-
+  rec <- mock_check("yes")
   with_server({
     session$setInputs(selected_dataset = "Weather")
     selected_polygons(selected_polygon())
-    session$flushReact()
-    session$elapse(500)
-    expect_equal(rec$km, 30)
+    session$setInputs(check_availability = 1)
+    expect_equal(rec$calls[[1]]$km, 30)
 
     session$setInputs(weather_max_km = 75)
-    session$elapse(500)
     expect_equal(weather_max_km(), 75)
-    expect_equal(rec$km, c(30, 75))  # checked again with the new distance
+    session$setInputs(check_availability = 2)
+    expect_equal(rec$calls[[2]]$km, 75)                    # the new distance is used by the next check
 
     for (bad in list(NA, -5, 0, "abc", NULL)) {
       session$setInputs(weather_max_km = bad)
-      session$elapse(500)
       expect_equal(weather_max_km(), 75)  # the last good value stays
     }
 

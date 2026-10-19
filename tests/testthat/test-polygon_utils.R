@@ -95,6 +95,7 @@ test_that("NDC_MAX_AREA_KM2 sets the limit; nonsense is ignored", {
 })
 
 test_that("a polygon above the limit is not added, except for Weather, and the others still are", {
+  mock_check()   # (what the services have is tested in test-availability.R)
   rec <- new.env()
   rec$notes <- character(0)
   local_mocked_bindings(showNotification = function(ui, ...) rec$notes <- c(rec$notes, ui))

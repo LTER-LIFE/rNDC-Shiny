@@ -6,8 +6,10 @@ retrieve_no_progress <- function(detail = NULL, value = NULL) invisible(NULL)
 
 # Retrieve every row of the overview `ov`. Returns the data (`results`, named after the datasets and their
 # rows), the rows for the download summary (`manifest_rows`), the `messages` and, when nothing is written
-# (`workdir` is NULL), the `parameters` of the retrievals (see retrieve_row()).
-retrieve_overview <- function(ov, workdir, ndc_token, adc_token, progress = retrieve_no_progress, parameters = TRUE) {
+# (`workdir` is NULL), the `parameters` of the retrievals (see retrieve_row()). With `keep_data = FALSE` the data of
+# a row is let go once it is written, so that the rasters of an overview are not all in memory at the end.
+retrieve_overview <- function(ov, workdir, ndc_token, adc_token, progress = retrieve_no_progress, parameters = TRUE,
+                              keep_data = TRUE) {
   n <- nrow(ov)
   results <- list()
   recorded <- list()
@@ -22,11 +24,14 @@ retrieve_overview <- function(ov, workdir, ndc_token, adc_token, progress = retr
       retrieve_row(ov[i, ], i, workdir, ndc_token = ndc_token, adc_token = adc_token, parameters = parameters),
       label, i, n, progress
     )
-    if (!is.null(res$data)) results[[res$name]] <- res$data
-    for (extra in names(res$more)) results[[extra]] <- res$more[[extra]]
+    if (keep_data) {
+      if (!is.null(res$data)) results[[res$name]] <- res$data
+      for (extra in names(res$more)) results[[extra]] <- res$more[[extra]]
+    }
     if (length(res$parameters) > 0) recorded[[res$name]] <- res$parameters
     manifest_rows <- c(manifest_rows, res$manifest)
     messages <- c(messages, res$messages)
+    res <- NULL
     progress(value = i / n)
   }
 
@@ -54,7 +59,8 @@ retrieve_and_package <- function(ov, zipfile = NULL, save_files = TRUE, workdir 
     workdir <- NULL
   }
 
-  run <- retrieve_overview(ov, workdir, ndc_token, adc_token, progress, parameters = parameters)
+  run <- retrieve_overview(ov, workdir, ndc_token, adc_token, progress, parameters = parameters,
+                           keep_data = return_data || !save_files)
 
   manifest_df <- if (length(run$manifest_rows) > 0) dplyr::bind_rows(run$manifest_rows) else tibble::tibble()
   produced_any <- export_any_data(manifest_df)

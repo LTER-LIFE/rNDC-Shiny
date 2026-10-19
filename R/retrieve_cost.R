@@ -2,9 +2,11 @@
 # A retrieval keeps the app busy until it is done, so a long one is warned about, and a too long one refused.
 
 # Estimated seconds to retrieve each overview row (the vectors have one element per row). Only the datasets
-# that make many requests count: Weather (one request per `weather_chunk_days` days) and the NDVI rasters
-# (one download per day). The others take a few seconds.
-retrieve_estimate_seconds <- function(dataset, view, date_from, date_to) {
+# that make many requests or download a lot count: Weather (one request per `weather_chunk_days` days), the NDVI
+# rasters (one download per day) and the AHN and soil map rasters (the time grows with the cells of the area, up to
+# `raster_max_cells`, see `retrieve_raster_seconds()`; `polygon_sf` is the list with the polygon of each row, without it
+# a raster counts as small). The others take a few seconds.
+retrieve_estimate_seconds <- function(dataset, view, date_from, date_to, polygon_sf = NULL) {
   vapply(seq_along(dataset), function(i) {
     from <- date_from[i]
     to <- date_to[i]
@@ -17,8 +19,23 @@ retrieve_estimate_seconds <- function(dataset, view, date_from, date_to) {
     if (dataset[i] == "NDVI" && tolower(as.character(view[i])) != "statistics") {
       return(if (is.na(days)) 0 else days * request_seconds[["ndvi_day"]])
     }
+    if (dataset[i] %in% names(raster_cell_size)) {
+      return(retrieve_raster_seconds(raster_cell_size[[dataset[i]]], if (is.null(polygon_sf)) NULL else polygon_sf[[i]]))
+    }
     0
   }, numeric(1))
+}
+
+# Seconds to download the rasters with cells of `cell_size` metres (one request for each) for the bounding box of the
+# polygon `poly` (an sf object; NULL: unknown): a request, and the time of its cells, which are at most `raster_max_cells`
+# (a larger area is requested with larger cells).
+retrieve_raster_seconds <- function(cell_size, poly = NULL) {
+  area <- if (is.null(poly)) NA_real_ else tryCatch({
+    bb <- sf::st_bbox(sf::st_transform(sf::st_geometry(poly), 32631))
+    as.numeric((bb[["xmax"]] - bb[["xmin"]]) * (bb[["ymax"]] - bb[["ymin"]]))
+  }, error = function(e) NA_real_)
+  cells <- if (is.na(area)) 0 else pmin(area / cell_size^2, raster_max_cells)
+  sum(request_seconds[["raster_request"]] + request_seconds[["raster_million_cells"]] * cells / 1e6)
 }
 
 # "less than a minute", "about 1 minute", "about 5 minutes"

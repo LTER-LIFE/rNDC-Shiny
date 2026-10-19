@@ -142,7 +142,7 @@ server_dataset <- function(input, output, session, state, helpers) {
                                   dateRangeInput("weather_period", "From - To:", start = Sys.Date() - 31, end = Sys.Date() - 1, min = weather_min_date, max = Sys.Date())),
                  numericInput("weather_max_km", "Largest distance to the weather station (km):",
                               value = isolate(state$weather_max_km()), min = 1, max = 1000, step = 5),
-                 helpText("The data come from the weather station closest to the centre of the area. The menu marks Weather as available when that station is not farther away than this.")
+                 helpText("The data come from the weather station closest to the centre of the area. Check availability (and adding Weather) finds no data when that station is farther away than this, and Weather is then not added.")
         )
       )
 
@@ -315,13 +315,19 @@ server_dataset <- function(input, output, session, state, helpers) {
     }
 
     if (length(new_rows) > 0) {
-      # where the check found no data, say so (the dataset is added anyway: the check does not know everything)
-      found <- availability_of(isolate(state$availability()), ds_label)
-      if (!is.null(found) && found$status == "no") showNotification(availability_no_data_warning(found), type = "warning", duration = 10)
       added <- dplyr::bind_rows(new_rows)
+      # a polygon where the services have no data for the dataset is left out, with a message (a check that could not be
+      # made does not stop it); the result is also what the menu shows for the dataset
+      found <- helpers$availability$check_added(added, ds_label, view_label, year_val)
+      if (any(found$none)) {
+        showNotification(availability_no_data_message(found$rows[[which(found$none)[1]]], added$polygon[found$none]),
+                         type = "error", duration = 12)
+        added <- added[!found$none, , drop = FALSE]
+        if (nrow(added) == 0) return(NULL)
+      }
       # the whole overview is retrieved at once, so it is the total that counts
-      seconds <- sum(retrieve_estimate_seconds(ov$dataset, ov$view, ov$date_from, ov$date_to),
-                     retrieve_estimate_seconds(added$dataset, added$view, added$date_from, added$date_to))
+      seconds <- sum(retrieve_estimate_seconds(ov$dataset, ov$view, ov$date_from, ov$date_to, ov$polygon_sf),
+                     retrieve_estimate_seconds(added$dataset, added$view, added$date_from, added$date_to, added$polygon_sf))
       if (seconds > max_request_seconds()) {
         showNotification(retrieve_too_long_message(seconds), type = "error", duration = 12)
         return(NULL)

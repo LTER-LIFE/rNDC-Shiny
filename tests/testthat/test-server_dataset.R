@@ -1,6 +1,7 @@
 # Choosing a dataset and adding it to the overview: the checks of the settings, and the warnings about long retrievals. (R/server_dataset.R)
 
 test_that("datasets that need an ADC token cannot be added without one", {
+  mock_check()   # (what the services have is tested in test-availability.R)
   withr::local_envvar(NDC_TOKEN = "t", ADC_TOKEN = "")
   wkt <- "POLYGON((5.75 52.05,5.76 52.05,5.76 52.06,5.75 52.06,5.75 52.05))"
   sel <- sf::st_sf(wkt = wkt, source_name = "Own polygon", layer_id = 1L,
@@ -26,6 +27,7 @@ test_that("datasets that need an ADC token cannot be added without one", {
 })
 
 test_that("NDVI months are checked when a dataset is added", {
+  mock_check()   # (what the services have is tested in test-availability.R)
   withr::local_envvar(NDC_TOKEN = "t", ADC_TOKEN = "t")
   wkt <- "POLYGON((5.75 52.05,5.76 52.05,5.76 52.06,5.75 52.06,5.75 52.05))"
   sel <- sf::st_sf(wkt = wkt, source_name = "Own polygon", layer_id = 1L,
@@ -51,6 +53,7 @@ test_that("NDVI months are checked when a dataset is added", {
 })
 
 test_that("NDVI: a start in the future is rejected and an end in the future is clipped", {
+  mock_check()   # (what the services have is tested in test-availability.R)
   withr::local_envvar(NDC_TOKEN = "t", ADC_TOKEN = "t")
   this_year <- as.integer(format(Sys.Date(), "%Y"))
   sel <- selected_polygon()
@@ -75,6 +78,7 @@ test_that("NDVI: a start in the future is rejected and an end in the future is c
 })
 
 test_that("invalid NDVI months and empty inputs are rejected", {
+  mock_check()   # (what the services have is tested in test-availability.R)
   withr::local_envvar(NDC_TOKEN = "t", ADC_TOKEN = "t")
   sel <- selected_polygon()
 
@@ -94,6 +98,7 @@ test_that("invalid NDVI months and empty inputs are rejected", {
 })
 
 test_that("the same dataset is not added twice for the same polygon", {
+  mock_check()   # (what the services have is tested in test-availability.R)
   withr::local_envvar(NDC_TOKEN = "t", ADC_TOKEN = "t")
   sel <- selected_polygon()
 
@@ -112,6 +117,7 @@ test_that("the same dataset is not added twice for the same polygon", {
 })
 
 test_that("Land Use uses the selected year, or the default until the year input exists", {
+  mock_check()   # (what the services have is tested in test-availability.R)
   withr::local_envvar(NDC_TOKEN = "t", ADC_TOKEN = "t")
   sel <- selected_polygon()
 
@@ -126,6 +132,7 @@ test_that("Land Use uses the selected year, or the default until the year input 
 })
 
 test_that("NDVI months before the first observations are clipped or rejected", {
+  mock_check()   # (what the services have is tested in test-availability.R)
   withr::local_envvar(NDC_TOKEN = "t", ADC_TOKEN = "t")
   sel <- selected_polygon()
 
@@ -153,6 +160,7 @@ ndvi_rasters <- function(session, from_year, from_month, to_year, to_month, view
 }
 
 test_that("an NDVI raster period that would take too long is refused", {
+  mock_check()   # (what the services have is tested in test-availability.R)
   rec <- new.env()
   local_mocked_bindings(retrieve_too_long_message = function(seconds) { rec$refused <- seconds; "too long" })
   sel <- selected_polygon()
@@ -168,6 +176,7 @@ test_that("an NDVI raster period that would take too long is refused", {
 })
 
 test_that("a long but allowed retrieval is added, with a warning", {
+  mock_check()   # (what the services have is tested in test-availability.R)
   rec <- new.env()
   local_mocked_bindings(retrieve_long_warning = function(seconds) { rec$warned <- seconds; "long" },
                         retrieve_too_long_message = function(seconds) { rec$refused <- seconds; "too long" })
@@ -185,6 +194,7 @@ test_that("a long but allowed retrieval is added, with a warning", {
 })
 
 test_that("the whole overview counts, not only the dataset being added", {
+  mock_check()   # (what the services have is tested in test-availability.R)
   rec <- new.env()
   local_mocked_bindings(retrieve_too_long_message = function(seconds) { rec$refused <- seconds; "too long" })
   sel <- selected_polygon()
@@ -209,6 +219,7 @@ test_that("the whole overview counts, not only the dataset being added", {
 })
 
 test_that("each selected polygon is retrieved separately, so it counts too", {
+  mock_check()   # (what the services have is tested in test-availability.R)
   rec <- new.env()
   local_mocked_bindings(retrieve_too_long_message = function(seconds) { rec$refused <- seconds; "too long" })
   both <- rbind(selected_polygon("A"), selected_polygon("B"))
@@ -225,6 +236,7 @@ test_that("each selected polygon is retrieved separately, so it counts too", {
 })
 
 test_that("the limit can be raised, and does not apply to what is quick", {
+  mock_check()   # (what the services have is tested in test-availability.R)
   withr::local_options(rNDC.Shiny.max_request_seconds = 1000)
   sel <- selected_polygon()
 
@@ -247,6 +259,7 @@ test_that("the limit can be raised, and does not apply to what is quick", {
 })
 
 test_that("the longest Weather period is allowed, with a warning", {
+  mock_check()   # (what the services have is tested in test-availability.R)
   rec <- new.env()
   local_mocked_bindings(retrieve_long_warning = function(seconds) { rec$warned <- seconds; "long" })
   sel <- selected_polygon()

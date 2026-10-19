@@ -65,6 +65,7 @@ retrieve_row <- function(row, index, workdir = NULL, ndc_token, adc_token, param
         for (extra in outcome$extras) {
           file <- export_unique_file(workdir, paste0(file_base, "_", extra$suffix), extra$ext, date_label)
           ok <- extra$writer(file)
+          more[[paste0(extra$name, "_", index)]] <- extra$data
           manifest <- c(manifest, list(summary_row(extra$ext, basename(file), if (ok) "ok" else "failed")))
           messages <- c(messages, if (ok) extra$ok_msg else extra$fail_msg)
         }
