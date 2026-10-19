@@ -142,7 +142,7 @@ server_dataset <- function(input, output, session, state, helpers) {
                                   dateRangeInput("weather_period", "From - To:", start = Sys.Date() - 31, end = Sys.Date() - 1, min = weather_min_date, max = Sys.Date())),
                  numericInput("weather_max_km", "Largest distance to the weather station (km):",
                               value = isolate(state$weather_max_km()), min = 1, max = 1000, step = 5),
-                 helpText("The data come from the weather station closest to the centre of the area. Check availability (and adding Weather) finds no data when that station is farther away than this, and Weather is then not added.")
+                 helpText("The data come from the weather station closest to the centre of the area. Check data availability (and adding Weather) finds no data when that station is farther away than this, and Weather is then not added.")
         )
       )
 

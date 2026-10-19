@@ -302,7 +302,7 @@ test_that("nothing is checked until a button is clicked, and the marks go with a
     expect_length(rec$calls, 1)
     expect_length(notes$notes, 1)
     expect_equal(notes$notes[[1]][[2]], "warning")
-    expect_match(notes$notes[[1]][[1]], "The selected area changed, so the availability of the datasets is no longer known. Click Check availability",
+    expect_match(notes$notes[[1]][[1]], "The selected area changed, so the availability of the datasets is no longer known. Click Check data availability",
                  fixed = TRUE)
 
     # no marks any more: another selection says nothing
@@ -530,5 +530,25 @@ test_that("the distance of the box is used by the checks, a bad value is ignored
     # the box is built again with the value that was set (it is gone while another dataset is chosen)
     session$setInputs(selected_dataset = "AHN")
     expect_match(as.character(build_controls_for("Weather", "Statistics")), 'value="75"', fixed = TRUE)
+  })
+})
+
+test_that("the button is called Check data availability, and the info button next to the datasets explains the marks", {
+  html <- as.character(app_ui())
+  expect_match(html, '<button[^>]*id="check_availability"[^>]*>\\s*Check data availability\\s*</button>')
+  expect_false(grepl("which datasets have data for the selected area", html, fixed = TRUE))   # (the grey text is gone)
+  expect_false(grepl("Click Check data availability to mark the datasets", html, fixed = TRUE))
+  expect_match(html, '<button[^>]*btn-info-circle[^>]*id="info_availability"')
+
+  rec <- new.env()
+  rec$shown <- NULL
+  local_mocked_bindings(showModal = function(ui, ...) rec$shown <- ui)
+  with_server({
+    session$setInputs(info_availability = 1)
+    text <- as.character(rec$shown)
+    expect_match(text, "Data availability", fixed = TRUE)
+    expect_match(text, "Check data availability", fixed = TRUE)
+    expect_match(text, "data found", fixed = TRUE)
+    expect_match(text, "polygon with no data for the dataset is not added", fixed = TRUE)
   })
 })

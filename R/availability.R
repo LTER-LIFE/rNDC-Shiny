@@ -1,6 +1,6 @@
 # Which datasets have data for the selected area? One row per dataset: a `status` and a sentence (`detail`) that
 # says it. The check is quick (a few requests, 0.05-0.3 s for AgroDataCube, 0.5-2 s for the STAC search) and its
-# parts are cached per area. The app makes it when the "Check availability" button is clicked (all datasets) and when
+# parts are cached per area. The app makes it when the "Check data availability" button is clicked (all datasets) and when
 # a dataset is added to the overview (that dataset, for each polygon): a dataset with no data for a polygon is not added.
 # It tells what the services know about the area.
 #
@@ -248,6 +248,26 @@ availability_of <- function(table, dataset) {
   if (is.null(table) || is.null(dataset)) return(NULL)
   row <- table[table$dataset == dataset, , drop = FALSE]
   if (nrow(row) == 0) NULL else row
+}
+
+# What the info button next to "Choose dataset(s)" says about the availability of the datasets
+availability_help <- function() {
+  tagList(
+    tags$p("Click ", tags$b("Check data availability"), " (below the map) to find out which datasets have data for the ",
+           "selected area. The datasets in the list are marked:"),
+    tags$ul(
+      tags$li(tags$span(style = "color:#2e7d32; font-weight:700;", "\u2713"), " data found (orange where only part of the data was found, ",
+              "for example not all the nitrogen layers)"),
+      tags$li(tags$span(style = "color:#b26a00; font-weight:700;", "\u2717"), " no data found"),
+      tags$li(tags$span(style = "color:#888; font-weight:700;", "?"), " the check could not be made")
+    ),
+    tags$p("Point at a dataset, or choose it, for the details. The same click opens a table of all the datasets that exist ",
+           "for the area, and for a period if you ask for one."),
+    tags$p("Nothing is checked while you select areas or change years and dates. The marks go when you select other polygons, ",
+           "or change a year, a date or the distance of the Weather settings, and a warning tells you to check again."),
+    tags$p("Adding a dataset to the overview checks it too, for each selected polygon, with the year or period you chose: a ",
+           "polygon with no data for the dataset is not added, and a message says what to change.")
+  )
 }
 
 # The message for a dataset that is not added where no data was found: `row` is its check and `polygons` the names of the

@@ -1,4 +1,4 @@
-# Which datasets have data for the selected area: the check of R/availability.R when the "Check availability" button is
+# Which datasets have data for the selected area: the check of R/availability.R when the "Check data availability" button is
 # clicked (all datasets, for the selected polygons) and when a dataset is added to the overview (that dataset, for each
 # polygon). The result is shown as marks in the dataset menu and as the sentence under the settings of the selected
 # dataset. They stay until a check is made again, or until the selection of polygons, or a year or date (or the distance
@@ -23,6 +23,11 @@ server_availability <- function(input, output, session, state, helpers) {
     if (length(km) == 1 && is.finite(km) && km > 0) weather_max_km(km)
   })
 
+  # the info button next to "Choose dataset(s)"
+  observeEvent(input$info_availability, {
+    showModal(modalDialog(title = "Data availability", availability_help(), easyClose = TRUE, footer = modalButton("Close")))
+  })
+
   # The marks and the sentence go, and the user is warned (yellow, not the red of an error) that the availability should be
   # evaluated again; nothing is checked. Nothing is said when there were no marks.
   clear_marks <- function(changed) {
@@ -31,7 +36,7 @@ server_availability <- function(input, output, session, state, helpers) {
     session$sendCustomMessage("ndc_availability", NULL)
     if (had_marks) {
       showNotification(paste0("The ", changed, " changed, so the availability of the datasets is no longer known. ",
-                              "Click Check availability to evaluate it again."), type = "warning", duration = 10)
+                              "Click Check data availability to evaluate it again."), type = "warning", duration = 10)
     }
   }
 

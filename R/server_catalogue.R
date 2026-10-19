@@ -1,4 +1,4 @@
-# The dialog of the "Check availability" button (which also marks the datasets, see R/server_availability.R): the
+# The dialog of the "Check data availability" button (which also marks the datasets, see R/server_availability.R): the
 # table of rNDC::ndc_available() for the selected polygons and, if the user wants, a period (R/catalogue.R). It is asked
 # when the dialog is opened and when the area or period changes, not on every selection, and cached per area and period.
 server_catalogue <- function(input, output, session, state, helpers) {
