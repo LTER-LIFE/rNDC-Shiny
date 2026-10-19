@@ -37,6 +37,8 @@ state_create <- function(ndc_token, adc_token) {
     prepared_zip = reactiveVal(NULL),
     # which datasets have data for the selected area (R/availability.R), or NULL
     availability = reactiveVal(NULL),
+    # can "Check data availability" be clicked? (are polygons selected)
+    check_enabled = reactiveVal(FALSE),
     # how far (km) the weather station may be for the Weather check; the input only exists while Weather is chosen
     weather_max_km = reactiveVal(weather_max_station_km),
     # is a retrieval of this session running in the background?

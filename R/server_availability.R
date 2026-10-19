@@ -13,8 +13,18 @@ server_availability <- function(input, output, session, state, helpers) {
   selected_polygons <- state$selected_polygons
   availability_state <- state$availability
   weather_max_km <- state$weather_max_km
+  check_enabled <- state$check_enabled
   mytoken <- state$mytoken
   agro_token <- state$agro_token
+
+  # The button "Check data availability" can be clicked when polygons are selected (a project's, an uploaded file's or a
+  # drawn one: whatever is selected on the map), like Add to overview
+  observe({
+    polygons <- selected_polygons()
+    enabled <- !is.null(polygons) && nrow(polygons) > 0
+    check_enabled(enabled)
+    session$sendCustomMessage("ndc_toggle_check_button", enabled)
+  })
 
   # The largest distance to the weather station (an input of the Weather settings). A value that is not a positive
   # number is ignored, and the last good one is kept: the input is gone when another dataset is chosen.
@@ -64,10 +74,11 @@ server_availability <- function(input, output, session, state, helpers) {
   }, ignoreNULL = FALSE)
 
   # The check of `area` (an sf object) for the `datasets`: the table, or NULL if it could not be made
-  check <- function(area, datasets = all_dataset_names, years = list(), view = NULL) {
+  check <- function(area, datasets = all_dataset_names, years = list(), view = NULL, progress = NULL) {
     tryCatch(
       httr::with_config(httr::timeout(availability_timeout),
-                        availability_check(area, mytoken, agro_token, years, weather_max_km(), datasets = datasets, view = view)),
+                        availability_check(area, mytoken, agro_token, years, weather_max_km(), datasets = datasets, view = view,
+                                           progress = progress)),
       error = function(e) {
         message("The availability check failed: ", conditionMessage(e))
         NULL
@@ -96,7 +107,12 @@ server_availability <- function(input, output, session, state, helpers) {
     if (is.null(sel) || nrow(sel) == 0) return(NULL)
     years <- list("Agricultural fields" = input$selected_year, "Land Use" = input$landuse_year, "Nitrogen" = input$nitrogen_year)
     session$sendCustomMessage("ndc_availability", list(pending = TRUE))
-    table <- withProgress(message = "Checking the datasets...", value = 0.5, check(sel, years = years))
+    # the progress bar says how many of the datasets have been tested
+    table <- withProgress(message = "Checking datasets...", value = 0, {
+      check(sel, years = years, progress = function(done, total) {
+        setProgress(value = done / total, detail = sprintf("%d of %d datasets tested", done, total))
+      })
+    })
     if (is.null(table)) {
       availability_state(NULL)
       session$sendCustomMessage("ndc_availability", list(pending = FALSE, datasets = list()))
@@ -112,9 +128,13 @@ server_availability <- function(input, output, session, state, helpers) {
   check_added <- function(added, dataset, view, year) {
     years <- list()
     if (dataset %in% c("Agricultural fields", "Land Use", "Nitrogen") && length(year) == 1 && !is.na(year)) years[[dataset]] <- year
-    rows <- lapply(seq_len(nrow(added)), function(i) {
-      table <- check(added$polygon_sf[[i]], datasets = dataset, years = years, view = view)
-      if (is.null(table)) NULL else table[table$dataset == dataset, , drop = FALSE]
+    # one dataset, so the progress bar counts the polygons
+    rows <- withProgress(message = paste0("Checking ", dataset, "..."), value = 0, {
+      lapply(seq_len(nrow(added)), function(i) {
+        setProgress(value = (i - 1) / nrow(added), detail = sprintf("%d of %d polygons tested", i - 1, nrow(added)))
+        table <- check(added$polygon_sf[[i]], datasets = dataset, years = years, view = view)
+        if (is.null(table)) NULL else table[table$dataset == dataset, , drop = FALSE]
+      })
     })
     if (all(vapply(rows, is.null, NA))) return(list(none = rep(FALSE, nrow(added)), rows = rows))
     show_rows(availability_combine(rows), paste(unique(added$polygon), collapse = ", "))

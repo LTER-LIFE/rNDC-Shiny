@@ -368,6 +368,11 @@ app_ui <- function() {
             if (detail[i]) el.setAttribute('title', detail[i]);
           });
         });
+        Shiny.addCustomMessageHandler('ndc_toggle_check_button', function(enabled) {
+          var btn = document.getElementById('check_availability');
+          if (!btn) return;
+          btn.disabled = !enabled;
+        });
         Shiny.addCustomMessageHandler('ndc_toggle_add_button', function(enabled) {
           var btn = document.getElementById('add_dataset');
           if (!btn) return;
@@ -428,7 +433,7 @@ app_ui <- function() {
         ),
         leafletOutput("map", height = "400px"),
         uiOutput("snl_status"),
-        tags$div(style = "margin-top:8px;", actionButton("check_availability", "Check data availability", class = "btn-custom")),
+        tags$div(style = "margin-top:8px;", actionButton("check_availability", "Check data availability", class = "btn-custom", disabled = TRUE)),
         br(),
         tags$div(style = "display:flex; align-items:center; gap:8px;",
                  h4("Choose dataset(s)", style = "margin-top:10px; margin-bottom:10px;"),

@@ -552,3 +552,83 @@ test_that("the button is called Check data availability, and the info button nex
     expect_match(text, "polygon with no data for the dataset is not added", fixed = TRUE)
   })
 })
+
+test_that("Check data availability starts disabled, and is enabled when polygons are selected", {
+  html <- as.character(app_ui())
+  tag <- regmatches(html, regexpr('<button[^>]*id="check_availability"[^>]*>', html))
+  expect_match(tag, ' disabled ', fixed = TRUE)                                  # disabled from the start
+
+  with_server({
+    session$flushReact()
+    expect_false(check_enabled())                                    # nothing selected
+
+    # a project, an upload or a drawn polygon that is there but not selected is no reason
+    fixed_polys(fixed_square(1, 5.7, 52))
+    uploaded_polys(fixed_square(2, 5.8, 52, name = "Upload_1"))
+    drawn_features(fixed_square(3, 5.9, 52, name = "Own polygon_1"))
+    session$flushReact()
+    expect_false(check_enabled())
+
+    selected_polygons(selected_polygon())                            # a polygon is selected
+    session$flushReact()
+    expect_true(check_enabled())
+    selected_polygons(NULL)                                          # deselected
+    session$flushReact()
+    expect_false(check_enabled())
+  })
+})
+
+test_that("the check reports how many datasets have been tested, from 0 up to the total", {
+  local_clean_cache()
+  rec <- mock_services()
+  done <- list()
+  availability_check(area(), "t", "t", years = list("Agricultural fields" = 2023),
+                     progress = function(done_n, total) done[[length(done) + 1]] <<- c(done_n, total))
+  expect_equal(done[[1]], c(0, 9))
+  expect_equal(done[[length(done)]], c(9, 9))
+  expect_equal(length(done), 10)                                     # 0 and then each of the 9 datasets
+  expect_equal(vapply(done, function(d) d[1], 0), 0:9)
+
+  done <- list()
+  availability_check(area(), "t", "t", datasets = c("AHN", "Weather"),
+                     progress = function(done_n, total) done[[length(done) + 1]] <<- c(done_n, total))
+  expect_equal(done, list(c(0, 2), c(1, 2), c(2, 2)))
+})
+
+test_that("the progress bar says Checking datasets and how many of them have been tested", {
+  local_clean_cache()
+  mock_check("yes")
+  seen <- new.env()
+  seen$set <- list()
+  local_mocked_bindings(setProgress = function(value = NULL, message = NULL, detail = NULL, ...) {
+    seen$set[[length(seen$set) + 1]] <- list(value = value, detail = detail)
+  })
+  with_server({
+    selected_polygons(selected_polygon())
+    session$setInputs(check_availability = 1)
+    expect_equal(seen$set[[1]], list(value = 0, detail = "0 of 9 datasets tested"))
+    expect_equal(seen$set[[5]], list(value = 4 / 9, detail = "4 of 9 datasets tested"))
+    expect_equal(seen$set[[length(seen$set)]], list(value = 1, detail = "9 of 9 datasets tested"))
+  })
+  expect_match(paste(deparse(body(server_availability)), collapse = " "), "Checking datasets...", fixed = TRUE)
+})
+
+test_that("adding a dataset shows how many of the polygons have been tested", {
+  local_clean_cache()
+  mock_check("yes")
+  seen <- new.env()
+  seen$set <- list()
+  local_mocked_bindings(setProgress = function(value = NULL, message = NULL, detail = NULL, ...) {
+    seen$set[[length(seen$set) + 1]] <- detail
+  })
+  second <- selected_polygon("Area B")
+  sf::st_geometry(second) <- sf::st_geometry(fixed_square(2, 5.9, 52.2))
+  second$wkt <- sf::st_as_text(sf::st_geometry(second))
+  both <- rbind(selected_polygon("Area A"), second)
+  with_server({
+    session$setInputs(selected_dataset = "Soil map")
+    selected_polygons(both)
+    session$setInputs(add_dataset = 1)
+    expect_equal(unlist(seen$set), c("0 of 2 polygons tested", "1 of 2 polygons tested"))
+  })
+})

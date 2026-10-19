@@ -178,9 +178,10 @@ availability_unwired <- function(dataset) list(status = "na", detail = paste0(da
 # list with the year of "Agricultural fields", "Land Use" and "Nitrogen" (a missing year means any), and
 # `weather_max_km` the largest distance to the weather station that counts as data. `datasets` are the datasets to
 # check (all by default; only their requests are made) and `view` the view of NDVI ("Geodata" or "Statistics"; either
-# by default). Returns a data frame with a row for each dataset, in the order of `all_dataset_names`.
+# by default). `progress`, if given, is a function(done, total) that is called with the number of datasets that have been
+# tested, from 0 up to the total. Returns a data frame with a row for each dataset, in the order of `all_dataset_names`.
 availability_check <- function(area, ndc_token, adc_token, years = list(), weather_max_km = weather_max_station_km,
-                               datasets = all_dataset_names, view = NULL) {
+                               datasets = all_dataset_names, view = NULL, progress = NULL) {
   datasets <- intersect(all_dataset_names, datasets)
   geometry <- sf::st_union(sf::st_geometry(area))
   key <- sf::st_as_text(geometry, digits = 6)
@@ -208,9 +209,12 @@ availability_check <- function(area, ndc_token, adc_token, years = list(), weath
     "Land Use" = function() availability_only_in_netherlands(availability_raster("Land Use", ndc_landuse_collection, stac, years[["Land Use"]]),
                                                              "Land Use", geometry)
   )
-  rows <- lapply(datasets, function(dataset) {
-    r <- check[[dataset]]()
-    availability_row(dataset, r$status, r$detail)
+  total <- length(datasets)
+  if (!is.null(progress)) progress(0L, total)
+  rows <- lapply(seq_along(datasets), function(i) {
+    r <- check[[datasets[i]]]()
+    if (!is.null(progress)) progress(i, total)
+    availability_row(datasets[i], r$status, r$detail)
   })
   if (length(rows) == 0) return(availability_row(character(), character(), character()))
   do.call(rbind, rows)

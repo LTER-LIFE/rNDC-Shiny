@@ -283,8 +283,13 @@ mock_check <- function(statuses = "yes", env = parent.frame()) {
   rec$calls <- list()
   rec$i <- 0
   testthat::local_mocked_bindings(availability_check = function(area, ndc_token, adc_token, years = list(),
-                                                                weather_max_km = 30, datasets = all_dataset_names, view = NULL) {
+                                                                weather_max_km = 30, datasets = all_dataset_names, view = NULL,
+                                                                progress = NULL) {
     rec$i <- rec$i + 1
+    if (!is.null(progress)) {            # as the real check does: the number of datasets tested, from 0
+      progress(0L, length(datasets))
+      for (k in seq_along(datasets)) progress(k, length(datasets))
+    }
     rec$calls[[rec$i]] <- list(datasets = datasets, years = years, view = view, km = weather_max_km, n = nrow(area))
     status <- statuses[[min(rec$i, length(statuses))]]
     if (is.null(status)) stop("boom")
