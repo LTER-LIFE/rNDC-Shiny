@@ -169,9 +169,47 @@ test_that("the dialog has the limits and where to go in its footer, also when th
     html <- as.character(shown$ui)
     expect_match(html, "modal-footer", fixed = TRUE)
     footer <- sub(".*modal-footer", "", html)
-    expect_match(footer, "polygons up to 2,000 km", fixed = TRUE)
+    expect_match(footer, "up to 100 selected polygons, with a total area of up to 2,000 km", fixed = TRUE)
     expect_match(footer, 'href="https://ndc.wur.nl"', fixed = TRUE)
     expect_match(footer, 'href="mailto:LTER-LIFE@nioo.knaw.nl"', fixed = TRUE)
     expect_match(footer, "Close", fixed = TRUE)
+  })
+})
+
+test_that("a selection above the limits is not checked: the dialog says which limit, and for the area Weather can still be added", {
+  local_clean_cache()
+  rec <- mock_check()
+  big <- transform(selected_polygon("Big"), wkt = sf::st_as_text(sf::st_geometry(fixed_square(9, 5, 52, size = 1))))
+  sf::st_geometry(big) <- sf::st_geometry(fixed_square(9, 5, 52, size = 1))
+  with_server({
+    selected_polygons(big)
+    session$flushReact()
+    session$setInputs(check_availability = 1)
+    expect_length(rec$calls, 0)                                    # nothing was checked
+    expect_null(availability())
+    html <- as.character(output$catalogue_note$html)
+    expect_match(html, "Not checked: The selected polygons cover", fixed = TRUE)
+    expect_match(html, "Select fewer or smaller polygons. Weather can still be added.", fixed = TRUE)
+    expect_equal(nrow(catalogue_display(NULL)), 0)                 # no table
+
+    selected_polygons(selected_polygon())                          # within the limits: checked as usual
+    session$setInputs(check_availability = 2)
+    expect_length(rec$calls, 1)
+  })
+})
+
+test_that("with too many polygons the dialog does not say that Weather can still be added", {
+  local_clean_cache()
+  rec <- mock_check()
+  local_mocked_bindings(max_polygons = function() 1L)
+  two <- rbind(selected_polygon("A"), transform(selected_polygon("B"), layer_id = 2L))
+  with_server({
+    selected_polygons(two)
+    session$flushReact()
+    session$setInputs(check_availability = 1)
+    expect_length(rec$calls, 0)
+    html <- as.character(output$catalogue_note$html)
+    expect_match(html, "Not checked: 2 polygons are selected: at most 1 can be used at once. Select fewer or smaller polygons.", fixed = TRUE)
+    expect_false(grepl("Weather can still be added", html, fixed = TRUE))
   })
 })

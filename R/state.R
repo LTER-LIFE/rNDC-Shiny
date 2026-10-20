@@ -16,7 +16,7 @@ state_empty_overview <- function() {
 }
 
 state_create <- function(ndc_token, adc_token) {
-  list(
+  state <- list(
     # polygons: drawn on the map, selected, from a project layer ("fixed"), and uploaded
     drawn_features = reactiveVal(NULL),
     selected_polygons = reactiveVal(NULL),
@@ -37,6 +37,8 @@ state_create <- function(ndc_token, adc_token) {
     prepared_zip = reactiveVal(NULL),
     # which datasets have data for the selected area (R/availability.R), or NULL
     availability = reactiveVal(NULL),
+    # can "Add to overview" be clicked? (a dataset is chosen with its settings, polygons are selected, and the selection is within the limits)
+    add_enabled = reactiveVal(FALSE),
     # can "Check data availability" be clicked? (are polygons selected)
     check_enabled = reactiveVal(FALSE),
     # how far (km) the weather station may be for the Weather check; the input only exists while Weather is chosen
@@ -50,4 +52,7 @@ state_create <- function(ndc_token, adc_token) {
     agro_token = adc_token,
     adc_available = nzchar(adc_token)
   )
+  # what is wrong with the selected polygons (see selection_problems()): sentences, none when they are within the limits
+  state$selection_issues <- reactive(selection_problems(state$selected_polygons()))
+  state
 }

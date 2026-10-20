@@ -25,7 +25,8 @@ contact_sentence <- function(what = "help") {
 
 # The limits of the app, as they are now (they can be set with environment variables, see ndc_app()), as text
 limits_text <- function() {
-  paste0("polygons up to ", format(max_area_km2(), big.mark = ","), " km\u00b2 for the datasets other than Weather, ",
+  paste0("up to ", format(max_polygons(), big.mark = ","), " selected polygons, with a total area of up to ",
+         format(max_area_km2(), big.mark = ","), " km\u00b2 (Weather has no area limit), ",
          "a retrieval of ", retrieve_format_duration(max_request_seconds()), " at the most, and uploads of up to ",
          format(round(max_upload_mb()), trim = TRUE), " MB and ", max_upload_features, " polygons per file or layer")
 }
@@ -37,3 +38,6 @@ contact_note <- function() {
          tags$a(href = ndc_website, target = "_blank", rel = "noopener noreferrer", ndc_website), " or contact ",
          tags$a(href = paste0("mailto:", ndc_contact), ndc_contact), ".")
 }
+
+# The sentences about a selection above the limits (see selection_problems()), as one text
+problems_text <- function(problems) paste(unname(problems), collapse = " ")

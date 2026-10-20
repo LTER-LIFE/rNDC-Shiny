@@ -14,6 +14,7 @@ server_availability <- function(input, output, session, state, helpers) {
   availability_state <- state$availability
   weather_max_km <- state$weather_max_km
   check_enabled <- state$check_enabled
+  selection_issues <- state$selection_issues
   mytoken <- state$mytoken
   agro_token <- state$agro_token
 
@@ -101,10 +102,27 @@ server_availability <- function(input, output, session, state, helpers) {
     paste(unique(names[!is.na(names)]), collapse = ", ")
   }
 
-  # the button: all the datasets, for the selected polygons (the dialog of R/server_catalogue.R opens with it)
+  # A selection above the limits: with too many polygons all the datasets are disabled in the menu and in the Add button,
+  # with too large an area all the datasets except Weather (which has no area limit), until the selection is within the limits;
+  # the user is told which limits it is above.
+  last_issues <- character(0)
+  observeEvent(selection_issues(), {
+    issues <- selection_issues()
+    session$sendCustomMessage("ndc_over_limit", list(all = "count" %in% names(issues), others = length(issues) > 0))
+    if (length(issues) > 0 && !identical(issues, last_issues)) {
+      disabled <- if ("count" %in% names(issues)) "All the datasets, Weather included, are" else "All the datasets except Weather are"
+      showNotification(paste0("The selection is above the limits: ", problems_text(issues), " ", disabled,
+                              " disabled until the selected polygons are within the limits. ",
+                              contact_sentence("larger areas or help")), type = "warning", duration = 15)
+    }
+    last_issues <<- issues
+  }, ignoreNULL = FALSE)
+
+  # the button: all the datasets, for the selected polygons (the dialog of R/server_catalogue.R opens with it). Nothing is
+  # checked when the selection is above the limits: the dialog says which.
   observeEvent(input$check_availability, {
     sel <- selected_polygons()
-    if (is.null(sel) || nrow(sel) == 0) return(NULL)
+    if (is.null(sel) || nrow(sel) == 0 || length(selection_issues()) > 0) return(NULL)
     years <- list("Agricultural fields" = input$selected_year, "Land Use" = input$landuse_year, "Nitrogen" = input$nitrogen_year)
     session$sendCustomMessage("ndc_availability", list(pending = TRUE))
     # the progress bar says how many of the datasets have been tested

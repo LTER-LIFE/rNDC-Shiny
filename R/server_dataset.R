@@ -5,6 +5,8 @@ server_dataset <- function(input, output, session, state, helpers) {
   uploaded_polys <- state$uploaded_polys
   overview <- state$overview
   adc_available <- state$adc_available
+  selection_issues <- state$selection_issues
+  add_enabled <- state$add_enabled
 
   shinyjs::disable(selector = "a[data-value='Statistics']")
 
@@ -70,8 +72,11 @@ server_dataset <- function(input, output, session, state, helpers) {
 
       enabled <- isTRUE(date_ok)
       if (!adc_available && ds %in% adc_datasets) enabled <- FALSE
+      # a selection above the limits (too many polygons, too large an area: Weather has no area limit)
+      if (length(problems_for(selection_issues(), ds)) > 0) enabled <- FALSE
     }
 
+    add_enabled(enabled)
     session$sendCustomMessage("ndc_toggle_add_button", enabled)
   })
 
@@ -201,6 +206,15 @@ server_dataset <- function(input, output, session, state, helpers) {
       showNotification("This dataset needs an AgroDataCube token (ADC_TOKEN).", type = "error", duration = 5)
       return(NULL)
     }
+    # the same verification as the one of the check button: a selection above the limits can only be used for Weather
+    issues <- problems_for(selection_issues(), input$selected_dataset)
+    if (length(issues) > 0) {
+      only_area <- identical(names(issues), "area") && !input$selected_dataset %in% area_exempt_datasets
+      showNotification(paste0("Not added: ", problems_text(issues), " Select fewer or smaller polygons",
+                              if (only_area) ", or add Weather, which has no area limit." else ".", " ",
+                              contact_sentence("larger areas or help")), type = "error", duration = 12)
+      return(NULL)
+    }
 
     year_val <- NA_integer_
     date_from_val <- as.Date(NA)
@@ -275,10 +289,6 @@ server_dataset <- function(input, output, session, state, helpers) {
     ov <- overview()
     new_rows <- list()
 
-    # polygons above the area limit (not for Weather, which uses the centroid)
-    too_large <- if (ds_label %in% polygon_limited_datasets()) polygon_too_large(sel) else character(0)
-    if (length(too_large) > 0) showNotification(polygon_too_large_message(too_large), type = "error", duration = 10)
-
     for (i in seq_len(nrow(sel))) {
       poly <- sel[i, , drop = FALSE]
       assigned_name <- if ("source_name" %in% names(poly) && !is.na(poly$source_name[1]) && nzchar(as.character(poly$source_name[1]))) {
@@ -286,7 +296,6 @@ server_dataset <- function(input, output, session, state, helpers) {
       } else {
         "Own polygon"
       }
-      if (assigned_name %in% too_large) next
 
       is_dup <- FALSE
       if (nrow(ov) > 0) {
@@ -336,7 +345,7 @@ server_dataset <- function(input, output, session, state, helpers) {
       if (seconds > warn_request_seconds) {
         showNotification(retrieve_long_warning(seconds), type = "warning", duration = 10)
       }
-    } else if (length(too_large) == 0) {
+    } else {
       showNotification("Selected dataset(s) already present for the selected polygon(s) with the same settings.", type = "message")
     }
   })

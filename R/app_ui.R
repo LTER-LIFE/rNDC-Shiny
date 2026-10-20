@@ -262,6 +262,12 @@ app_ui <- function() {
           border-left: 4px solid #1f5a8a;
           padding-left: 10px;
         }
+        .ndc-ds.over-limit {
+          color: #9aa6b2;
+          cursor: not-allowed;
+          pointer-events: none;
+          opacity: 0.6;
+        }
         .ndc-ds.disabled-ds {
           color: #9aa6b2;
           cursor: not-allowed;
@@ -368,6 +374,16 @@ app_ui <- function() {
             if (detail[i]) el.setAttribute('title', detail[i]);
           });
         });
+        // The selected polygons are above the limits: all the datasets are disabled when there are too many polygons
+        // (msg.all), all except Weather when the area is too large (msg.others)
+        Shiny.addCustomMessageHandler('ndc_over_limit', function(msg) {
+          document.querySelectorAll('.ndc-ds[id^=\"ndc-ds-\"]').forEach(function(el) {
+            var blocked = (el.id === 'ndc-ds-Weather') ? msg.all : msg.others;
+            el.classList.toggle('over-limit', !!blocked);
+            if (blocked) { el.setAttribute('title', 'Disabled: the selected polygons are above the limits'); }
+            else if (el.getAttribute('title') === 'Disabled: the selected polygons are above the limits') { el.removeAttribute('title'); }
+          });
+        });
         Shiny.addCustomMessageHandler('ndc_toggle_check_button', function(enabled) {
           var btn = document.getElementById('check_availability');
           if (!btn) return;
@@ -421,15 +437,17 @@ app_ui <- function() {
                               helpText(paste0("Supported file formats: .gpkg, .shp, .geojson, .kml, or a .zip with these. For shapefiles, upload all layers: .shp, .shx, .dbf, and preferably .prj. ",
                                               "The files together can be up to ", format(round(max_upload_mb()), trim = TRUE), " MB, ",
                                               "with at most ", max_upload_features, " polygons per file or layer. ",
-                                              "Datasets can be added for polygons up to ", format(max_area_km2(), big.mark = ","), " km2 ",
-                                              "(Weather has no limit). Files without a coordinate system are assumed to be in WGS84.")),
+                                              "At most ", max_polygons(), " polygons can be selected at once, and their total area can be up to ",
+                                              format(max_area_km2(), big.mark = ","), " km2 (Weather has no area limit): while the selected ",
+                                              "polygons are above these limits, the datasets are disabled (Weather only when there are too many polygons). ",
+                                              "Files without a coordinate system are assumed to be in WGS84.")),
                               fileInput("upload", "Upload polygons", multiple = TRUE, accept = c(".gpkg", ".shp", ".shx", ".dbf", ".prj", ".zip", ".geojson", ".json", ".kml")),
                               uiOutput("upload_panel"),
                               tags$div(style = "margin-top:6px;"))
         ),
         tags$details(class = "ndc-category",
                      tags$summary("Draw your own polygon"),
-                     tags$div(style = "margin-top:8px;", helpText("Use the polygon tool of the draw toolbar on the map below to create polygon(s): click each corner, and finish on the first corner. Click a polygon to select or deselect it. Use the trash can of the toolbar to delete drawn shapes. Datasets can be added for polygons up to ", format(max_area_km2(), big.mark = ","), " km2 (Weather has no limit)."), tags$div(style = "margin-top:6px;"))
+                     tags$div(style = "margin-top:8px;", helpText("Use the polygon tool of the draw toolbar on the map below to create polygon(s): click each corner, and finish on the first corner. Click a polygon to select or deselect it. Use the trash can of the toolbar to delete drawn shapes. At most ", max_polygons(), " polygons can be selected at once, and their total area can be up to ", format(max_area_km2(), big.mark = ","), " km2 (Weather has no area limit): while the selected polygons are above these limits, the datasets are disabled (Weather only when there are too many polygons)."), tags$div(style = "margin-top:6px;"))
         ),
         leafletOutput("map", height = "400px"),
         uiOutput("snl_status"),

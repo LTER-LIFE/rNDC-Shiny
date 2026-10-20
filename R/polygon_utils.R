@@ -117,12 +117,17 @@ polygon_zoom_to <- function(sf_obj) {
 
 # Limits on the polygons that users bring (drawn or uploaded).
 
-# The largest area (km2) of a polygon for which datasets can be added (not for Weather, which only uses the
-# centroid). A huge area means a huge download. Set another with the environment variable NDC_MAX_AREA_KM2, or the
+# The largest total area (km2) of the selected polygons for which datasets can be used (not Weather, which only uses the
+# centre of each polygon). A huge area means a huge download. Set another with the environment variable NDC_MAX_AREA_KM2, or the
 # option `rNDC.Shiny.max_area_km2`.
 default_max_area_km2 <- 2000
 
 max_area_km2 <- function() getOption("rNDC.Shiny.max_area_km2", default_max_area_km2)
+
+# The most polygons that can be selected at once, for every dataset: every polygon is a check and a retrieval of its own. Set another with the environment variable NDC_MAX_POLYGONS, or the option `rNDC.Shiny.max_polygons`.
+default_max_polygons <- 100L
+
+max_polygons <- function() getOption("rNDC.Shiny.max_polygons", default_max_polygons)
 
 # The largest number of features that one upload (or layer) may have: every feature is a shape on the map and a
 # polygon to select.
@@ -134,24 +139,36 @@ max_zip_files <- 200L
 
 max_zip_unpacked_mb <- 500
 
-# The datasets whose retrieval depends on the area of the polygon
-polygon_limited_datasets <- function() setdiff(all_dataset_names, "Weather")
+# The datasets that the limit of the area does not apply to: Weather uses the centre of each polygon (the number of polygons
+# and the size of the files are limited for all of them)
+area_exempt_datasets <- "Weather"
 
 # Area in km2 of each polygon of an sf object (in the Dutch grid, EPSG:28992)
 polygon_area_km2 <- function(poly) {
   as.numeric(sf::st_area(sf::st_transform(sf::st_geometry(poly), 28992))) / 1e6
 }
 
-# The names of the polygons of `sel` (an sf object with a `source_name`) that are above the area limit
-polygon_too_large <- function(sel, limit = max_area_km2()) {
+# What is wrong with the selected polygons `sel` (an sf object), as sentences named "count" (more polygons than
+# `limit_n`) and "area" (their total area is above `limit_area` km2). Nothing if they are within the limits. While there is
+# a problem the datasets are disabled: all of them for too many polygons, all but those that are exempt from the area limit
+# (Weather) for too large an area; see problems_for().
+selection_problems <- function(sel, limit_area = max_area_km2(), limit_n = max_polygons()) {
   if (is.null(sel) || nrow(sel) == 0) return(character(0))
-  names <- if ("source_name" %in% names(sel)) as.character(sel$source_name) else rep("Own polygon", nrow(sel))
-  names[polygon_area_km2(sel) > limit]
+  problems <- character(0)
+  if (nrow(sel) > limit_n) {
+    problems[["count"]] <- paste0(nrow(sel), " polygons are selected: at most ", format(limit_n, big.mark = ","),
+                                  " can be used at once.")
+  }
+  total <- sum(polygon_area_km2(sel))
+  if (total > limit_area) {
+    problems[["area"]] <- paste0("The selected polygons cover ", format(signif(total, 3), big.mark = ",", scientific = FALSE),
+                                 " km\u00b2 in total: at most ", format(limit_area, big.mark = ","), " km\u00b2 can be used at once.")
+  }
+  problems
 }
 
-polygon_too_large_message <- function(names, limit = max_area_km2()) {
-  paste0("Not added: ", if (length(names) == 1) "the polygon " else "the polygons ",
-         paste(names, collapse = ", "), if (length(names) == 1) " is" else " are",
-         " larger than the limit of ", format(limit, big.mark = ","), " km\u00b2 for this dataset. ",
-         "Choose a smaller area. ", contact_sentence("larger areas or help"))
+# The problems (from selection_problems()) that apply to the `dataset`: the area does not count for Weather
+problems_for <- function(problems, dataset) {
+  if (dataset %in% area_exempt_datasets) problems <- problems[names(problems) != "area"]
+  if (length(problems) == 0) character(0) else problems
 }

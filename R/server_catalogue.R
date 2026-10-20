@@ -28,6 +28,11 @@ server_catalogue <- function(input, output, session, state, helpers) {
   catalogue_data <- reactive({
     sel <- selected_polygons()
     if (is.null(sel) || nrow(sel) == 0) return(list(table = NULL, error = "Select an area on the map first."))
+    issues <- state$selection_issues()
+    if (length(issues) > 0) {
+      return(list(table = NULL, error = paste0("Not checked: ", problems_text(issues), " Select fewer or smaller polygons.",
+                                               if (identical(names(issues), "area")) " Weather can still be added." else "")))
+    }
     geometry <- sf::st_union(sf::st_geometry(sel))
     trange <- catalogue_trange()
     key <- cache_key("catalogue", sf::st_as_text(geometry, digits = 6), paste(trange, collapse = "/"))
