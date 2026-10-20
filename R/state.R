@@ -37,6 +37,11 @@ state_create <- function(ndc_token, adc_token) {
     prepared_zip = reactiveVal(NULL),
     # which datasets have data for the selected area (R/availability.R), or NULL
     availability = reactiveVal(NULL),
+    # the request (dataset, settings, polygons: see request_signature() in R/server_dataset.R) whose check next to Add to overview
+    # passed, or NULL: Add to overview is enabled only for the request that was checked
+    check_passed = reactiveVal(NULL),
+    # can the check next to "Add to overview" be clicked? (the dataset has valid settings and the selection is within the limits)
+    check_dataset_enabled = reactiveVal(FALSE),
     # can "Add to overview" be clicked? (a dataset is chosen with its settings, polygons are selected, and the selection is within the limits)
     add_enabled = reactiveVal(FALSE),
     # can "Check data availability" be clicked? (are polygons selected)

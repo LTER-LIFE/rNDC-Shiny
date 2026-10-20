@@ -160,27 +160,33 @@ test_that("a selection with too large an area can only be used for Weather: the 
     expect_match(rec$notes[[1]][[1]], "All the datasets except Weather are disabled", fixed = TRUE)
     expect_match(rec$notes[[1]][[1]], "see https://ndc.wur.nl or contact LTER-LIFE@nioo.knaw.nl", fixed = TRUE)
     expect_false(add_enabled())                                     # the Add button is disabled for Land Use
+    expect_false(check_dataset_enabled())                           # and so is the check next to it
 
     # ... and if it is clicked all the same, nothing is added (not even the small polygon)
     session$setInputs(add_dataset = 1)
     expect_equal(nrow(overview()), 0)
     expect_equal(rec$notes[[length(rec$notes)]][[2]], "error")
     expect_match(rec$notes[[length(rec$notes)]][[1]], "Not added: The selected polygons cover", fixed = TRUE)
-    expect_match(rec$notes[[length(rec$notes)]][[1]], "or add Weather, which has no area limit", fixed = TRUE)
+    expect_match(rec$notes[[length(rec$notes)]][[1]], "or use Weather, which has no area limit", fixed = TRUE)
 
     # Weather has no area limit: it can be added, for any size
     session$setInputs(selected_dataset = "Weather", weather_mode = "single", weather_date = Sys.Date() - 2)
     session$flushReact()
+    expect_true(check_dataset_enabled())
+    session$setInputs(check_dataset = 1)                            # (the check next to Add to overview enables Add)
     expect_true(add_enabled())
     session$setInputs(add_dataset = 2)
     expect_equal(overview()$dataset, c("Weather", "Weather"))
 
-    # within the limits again: the datasets are enabled
+    # within the limits again: the datasets can be checked and added
     selected_polygons(sel[1, ])
     session$flushReact()
     expect_length(selection_issues(), 0)
     session$setInputs(selected_dataset = "Land Use")
     session$flushReact()
+    expect_true(check_dataset_enabled())
+    expect_false(add_enabled())
+    session$setInputs(check_dataset = 2)
     expect_true(add_enabled())
     session$setInputs(add_dataset = 3)
     expect_equal(overview()$dataset, c("Weather", "Weather", "Land Use"))
@@ -196,12 +202,12 @@ test_that("the area is the total of the selected polygons: each of them within t
     selected_polygons(halves[1, ])
     session$flushReact()
     expect_length(selection_issues(), 0)
-    expect_true(add_enabled())
+    expect_true(check_dataset_enabled())
 
     selected_polygons(halves)
     session$flushReact()
     expect_named(selection_issues(), "area")
-    expect_false(add_enabled())
+    expect_false(check_dataset_enabled())
   })
 })
 
@@ -220,6 +226,7 @@ test_that("too many polygons disable all the datasets, Weather too, and the same
     selected_polygons(three)
     session$flushReact()
     expect_equal(selection_issues(), c(count = "3 polygons are selected: at most 2 can be used at once."))
+    expect_false(check_dataset_enabled())
     expect_false(add_enabled())
     n <- length(rec$notes)
     expect_match(rec$notes[[n]][[1]], "3 polygons are selected: at most 2 can be used at once.", fixed = TRUE)
@@ -228,6 +235,7 @@ test_that("too many polygons disable all the datasets, Weather too, and the same
     # Weather is limited in the number of polygons too
     session$setInputs(selected_dataset = "Weather", weather_mode = "single", weather_date = Sys.Date() - 2)
     session$flushReact()
+    expect_false(check_dataset_enabled())
     expect_false(add_enabled())
     session$setInputs(add_dataset = 1)
     expect_equal(nrow(overview()), 0)
@@ -242,6 +250,8 @@ test_that("too many polygons disable all the datasets, Weather too, and the same
     selected_polygons(three[1:2, ])
     session$flushReact()
     expect_length(selection_issues(), 0)
+    expect_true(check_dataset_enabled())
+    session$setInputs(check_dataset = 1)
     expect_true(add_enabled())
     session$setInputs(add_dataset = 2)
     expect_equal(overview()$dataset, c("Weather", "Weather"))         # (two polygons: within the limit)

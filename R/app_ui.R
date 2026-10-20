@@ -389,6 +389,11 @@ app_ui <- function() {
           if (!btn) return;
           btn.disabled = !enabled;
         });
+        Shiny.addCustomMessageHandler('ndc_toggle_check_dataset_button', function(enabled) {
+          var btn = document.getElementById('check_dataset');
+          if (!btn) return;
+          btn.disabled = !enabled;
+        });
         Shiny.addCustomMessageHandler('ndc_toggle_add_button', function(enabled) {
           var btn = document.getElementById('add_dataset');
           if (!btn) return;
@@ -525,7 +530,9 @@ app_ui <- function() {
         hr(),
         uiOutput("dataset_metadata"),
         uiOutput("availability"),
-        tags$div(style = "margin-top:18px;", actionButton("add_dataset", "Add to overview", class = "btn-custom"))
+        tags$div(style = "margin-top:18px; display:flex; align-items:center; gap:8px;",
+                 actionButton("check_dataset", "Check data availability", class = "btn-custom", disabled = TRUE),
+                 actionButton("add_dataset", "Add to overview", class = "btn-custom", disabled = TRUE))
       )
     ),
     div(class = "help-button-container", actionButton("open_guide", "?", class = "btn-help-circle"))

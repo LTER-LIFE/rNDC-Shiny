@@ -144,31 +144,83 @@ availability_only_in_netherlands <- function(result, dataset, geometry) {
   result
 }
 
-# NDVI: the rasters (the `ndvi` collection of the NatureDataCube, from GroenMonitor) cover the Netherlands; the statistics exist for the LTER and SNL project areas.
-# With the `view` ("Geodata" or "Statistics") only the one that is asked for counts; without it either will do.
-availability_ndvi <- function(geometry, area, view = NULL) {
+# NDVI: the rasters (the `ndvi` collection of the NatureDataCube, from GroenMonitor) cover the Netherlands; the statistics exist for the
+# LTER and SNL project areas. With the `view` ("Geodata" or "Statistics") only the one that is asked for counts; without it either will
+# do. With a `period` (two dates) the services are asked what they have in it: the days with rasters, or the observations of the
+# project polygons (no data in the period is "no"); without it the coverage is told.
+availability_ndvi <- function(geometry, area, view = NULL, period = NULL, ndc_token = Sys.getenv("NDC_TOKEN")) {
   inside <- availability_in_netherlands(geometry)
-  rasters <- list(status = if (is.na(inside)) "unknown" else if (inside) "yes" else "no", detail = "")
   sources <- if ("source_name" %in% names(area)) as.character(area$source_name) else character(nrow(area))
   n_project <- sum(!is.na(vapply(sources, project_ndvi_collection, "")))
+  view <- tolower(as.character(view))
+  rasters <- function() {
+    if (is.na(inside)) return(list(status = "unknown", detail = "NDVI: it could not be checked whether the selected area is in the Netherlands."))
+    if (!inside) return(list(status = "no", detail = "No NDVI rasters: the selected area is outside the Netherlands."))
+    if (!is.null(period)) return(availability_ndvi_rasters(geometry, period, ndc_token))
+    list(status = "yes", detail = "NDVI rasters cover the selected area.")
+  }
+  statistics <- function() {
+    if (n_project == 0) return(list(status = "no", detail = "No NDVI statistics: they exist only for LTER and SNL project areas."))
+    if (!is.null(period)) return(availability_ndvi_statistics(area, period, ndc_token))
+    list(status = "yes", detail = paste0("NDVI statistics for ", n_project, " of ", nrow(area), " selected polygon(s) (project areas)."))
+  }
+  if (identical(view, "statistics")) return(statistics())
+  if (identical(view, "geodata")) return(rasters())
+
+  # either view will do (no view was asked for)
+  r <- rasters()
+  status <- if (r$status == "yes" || n_project > 0) "yes" else if (r$status == "no") "no" else "unknown"
+  raster_text <- switch(r$status, yes = "rasters cover the selected area", no = "no rasters (the selected area is outside the Netherlands)",
+                        "rasters not checked")
   stats_text <- if (n_project > 0) {
     paste0("statistics for ", n_project, " of ", nrow(area), " selected polygon(s) (project areas)")
   } else {
     "no statistics (only for LTER and SNL project areas)"
   }
-  raster_text <- switch(rasters$status,
-    yes = "rasters for the selected area",
-    no = "no rasters (the selected area is outside the Netherlands)",
-    "rasters not checked")
-  view <- tolower(as.character(view))
-  if (identical(view, "statistics")) {
-    return(list(status = if (n_project > 0) "yes" else "no", detail = paste0("NDVI: ", stats_text, ".")))
-  }
-  if (identical(view, "geodata")) {
-    return(list(status = rasters$status, detail = paste0("NDVI: ", raster_text, ".")))
-  }
-  status <- if (rasters$status == "yes" || n_project > 0) "yes" else if (rasters$status == "no") "no" else "unknown"
-  list(status = status, detail = paste0("NDVI: ", raster_text, "; ", stats_text, "."))
+  list(status = status, detail = paste0("NDVI: ", raster_text, "; ", stats_text, ". Check a period with the button next to Add to overview."))
+}
+
+# "2024-06-01 and 2024-06-30"
+availability_period_text <- function(period) paste0(format(as.Date(period[1])), " and ", format(as.Date(period[2])))
+
+# The days with NDVI rasters in the period for the area: the items of the `ndvi` collection (one a day, only the days with data)
+availability_ndvi_rasters <- function(geometry, period, ndc_token) {
+  key <- sf::st_as_text(geometry, digits = 6)
+  days <- availability_cached(cache_key("avail", "ndvi-rasters", key, format(period[1]), format(period[2])), function() {
+    as.numeric(rNDC::ndc_count(collection = "ndvi", roi = geometry, trange = as.character(period), limit = 1, token = ndc_token))
+  })
+  cache <- cache_key("avail", "ndvi-rasters", key, format(period[1]), format(period[2]))
+  if (is.null(days) || is.na(days)) return(list(status = "unknown", detail = availability_could_not("NDVI rasters", cache)))
+  between <- availability_period_text(period)
+  if (days == 0) return(list(status = "no", detail = paste0("No NDVI rasters between ", between, " for the selected area.")))
+  list(status = "yes", detail = paste0("NDVI rasters: ", days, if (days == 1) " day" else " days", " with data between ", between,
+                                       " for the selected area."))
+}
+
+# The observations of the project polygons `area` in the period: the monthly statistics of rNDC::ndc_ndvi_stats()
+availability_ndvi_statistics <- function(area, period, ndc_token) {
+  sources <- if ("source_name" %in% names(area)) as.character(area$source_name) else character(nrow(area))
+  collections <- vapply(sources, project_ndvi_collection, "")
+  names <- paste(unique(sources[!is.na(collections)]), collapse = ", ")
+  area <- sf::st_transform(area[!is.na(collections), , drop = FALSE], 4326)
+  collections <- unique(collections[!is.na(collections)])
+  key <- sf::st_as_text(sf::st_union(sf::st_geometry(area)), digits = 6)
+
+  counts <- lapply(collections, function(collection) {
+    cache <- cache_key("avail", "ndvi-stats", key, collection, format(period[1]), format(period[2]))
+    list(cache = cache, value = availability_cached(cache, function() {
+      stats <- rNDC::ndc_ndvi_stats(area, collection, trange = as.character(period), token = ndc_token)
+      list(n_obs = sum(stats$n_obs), months = length(unique(stats$month)))
+    }))
+  })
+  failed <- Filter(function(x) is.null(x$value), counts)
+  if (length(failed) > 0) return(list(status = "unknown", detail = availability_could_not("NDVI statistics", failed[[1]]$cache)))
+  n_obs <- sum(vapply(counts, function(x) x$value$n_obs, 0))
+  months <- sum(vapply(counts, function(x) x$value$months, 0))
+  between <- availability_period_text(period)
+  if (n_obs == 0) return(list(status = "no", detail = paste0("No NDVI statistics between ", between, " for ", names, ".")))
+  list(status = "yes", detail = paste0("NDVI statistics: ", n_obs, if (n_obs == 1) " observation" else " observations", " in ", months,
+                                       if (months == 1) " month" else " months", " between ", between, " for ", names, "."))
 }
 
 # The datasets that cannot be checked, with the reason
@@ -177,11 +229,11 @@ availability_unwired <- function(dataset) list(status = "na", detail = paste0(da
 # The check for the area. `area` is the sf object of the selected polygons (with a `source_name`), `years` a
 # list with the year of "Agricultural fields", "Land Use" and "Nitrogen" (a missing year means any), and
 # `weather_max_km` the largest distance to the weather station that counts as data. `datasets` are the datasets to
-# check (all by default; only their requests are made) and `view` the view of NDVI ("Geodata" or "Statistics"; either
-# by default). `progress`, if given, is a function(done, total) that is called with the number of datasets that have been
+# check (all by default; only their requests are made), `view` the view of NDVI ("Geodata" or "Statistics"; either
+# by default) and `period` the first and the last date asked for (two dates; used for NDVI: what the services have in it). `progress`, if given, is a function(done, total) that is called with the number of datasets that have been
 # tested, from 0 up to the total. Returns a data frame with a row for each dataset, in the order of `all_dataset_names`.
 availability_check <- function(area, ndc_token, adc_token, years = list(), weather_max_km = weather_max_station_km,
-                               datasets = all_dataset_names, view = NULL, progress = NULL) {
+                               datasets = all_dataset_names, view = NULL, progress = NULL, period = NULL) {
   datasets <- intersect(all_dataset_names, datasets)
   geometry <- sf::st_union(sf::st_geometry(area))
   key <- sf::st_as_text(geometry, digits = 6)
@@ -199,7 +251,7 @@ availability_check <- function(area, ndc_token, adc_token, years = list(), weath
   check <- list(
     "Weather" = function() if (adc_ok) availability_weather(geometry, key, adc_token, weather_max_km) else needs_adc,
     "Nitrogen" = function() availability_raster("Nitrogen", nitrogen_layer_choices, stac, years[["Nitrogen"]]),
-    "NDVI" = function() availability_ndvi(geometry, area, view),
+    "NDVI" = function() availability_ndvi(geometry, area, view, period, ndc_token),
     "Vegetation structure" = function() availability_unwired("Vegetation structure"),
     "Ground water table" = function() availability_unwired("Ground water table"),
     "Soil map" = function() availability_only_in_netherlands(availability_raster("Soil map", ndc_soil_collection, stac, NULL),
@@ -269,15 +321,18 @@ availability_help <- function() {
            "for the area, and for a period if you ask for one."),
     tags$p("Nothing is checked while you select areas or change years and dates. The marks go when you select other polygons, ",
            "or change a year, a date or the distance of the Weather settings, and a warning tells you to check again."),
-    tags$p("Adding a dataset to the overview checks it too, for each selected polygon, with the year or period you chose: a ",
-           "polygon with no data for the dataset is not added, and a message says what to change."),
+    tags$p("The button ", tags$b("Check data availability"), " next to ", tags$b("Add to overview"), " does the checks of adding ",
+           "the dataset you chose, with the year, date or months you chose, for each selected polygon, without adding it. ",
+           "Add to overview is enabled only after this check has passed, and it is disabled again when you change the dataset, ",
+           "its view, the year, the date or the months, or the selected polygons. A polygon with no data for the dataset is ",
+           "not added, and a message says what to change."),
     contact_note()
   )
 }
 
 # The message for a dataset that is not added where no data was found: `row` is its check and `polygons` the names of the
 # polygons without data
-availability_no_data_message <- function(row, polygons = character()) {
+availability_no_data_message <- function(row, polygons = character(), outcome = "Nothing was added") {
   where <- if (length(polygons) > 0) paste0(" (", paste(polygons, collapse = ", "), ")") else ""
-  paste0(sub("\\.$", "", row$detail), where, ". Nothing was added: change the area, the year or the period, and try again.")
+  paste0(sub("\\.$", "", row$detail), where, ". ", outcome, ": change the area, the year or the period, and try again.")
 }

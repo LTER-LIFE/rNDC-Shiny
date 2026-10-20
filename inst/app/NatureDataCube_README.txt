@@ -14,6 +14,7 @@ You can select an existing project area, draw your own polygon on the map, or up
    - At most 100 polygons can be selected at once, and their total area can be up to the area limit shown in the panels (Weather has no area limit). While the selection is above the limits a warning says which and the datasets are disabled (Weather only when there are too many polygons); select fewer or smaller polygons. The AgroDataCube dataset Agricultural fields receives a simplified polygon if yours has very many vertices.
    - Click polygons on the map to select / deselect them. Selected polygons are highlighted blue and will be used for dataset queries.
 
+   - The button "Check data availability" next to "Add to overview" does the checks of adding the dataset (its year, date or months, and the selected polygons) without adding it; "Add to overview" is enabled after the check has passed, and disabled again when the dataset, its view, the year, the date, the months or the selected polygons change.
    - Click "Check data availability" (below the map; the "i" next to "Choose dataset(s)" explains the marks) and the datasets in the list are marked: a check mark when data was found, a cross when none was found, a question mark when the check could not be made. Point at a dataset to read why. A dataset with no data for a polygon cannot be added for that polygon.
 
 2) Choosing a dataset (left sidebar)

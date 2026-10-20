@@ -145,7 +145,7 @@ test_that("NDVI: rasters for the Netherlands, statistics for project areas", {
   mock_services()
   drawn <- availability_check(area("Own polygon_1"), "t", "t")
   expect_equal(status_of_dataset(drawn, "NDVI"), "yes")
-  expect_match(drawn$detail[drawn$dataset == "NDVI"], "rasters for the selected area; no statistics")
+  expect_match(drawn$detail[drawn$dataset == "NDVI"], "NDVI: rasters cover the selected area; no statistics (only for LTER and SNL project areas). Check a period with the button next to Add to overview.", fixed = TRUE)
 
   project <- availability_check(area("Nestboxes_3"), "t", "t")
   expect_match(project$detail[project$dataset == "NDVI"], "statistics for 1 of 1 selected polygon")
@@ -259,16 +259,6 @@ test_that("the checks of datasets are merged, and those of several polygons comb
   expect_match(availability_no_data_message(availability_row("AHN", "no", "No AHN data found."), c("A", "B")),
                "No AHN data found (A, B). Nothing was added", fixed = TRUE)
 })
-
-# the notifications that the app shows, as list(text, type) in `rec$notes`
-mock_notes <- function(env = parent.frame()) {
-  rec <- new.env()
-  rec$notes <- list()
-  testthat::local_mocked_bindings(showNotification = function(ui, type = "default", ...) {
-    rec$notes[[length(rec$notes) + 1]] <- list(ui, type)
-  }, .env = env)
-  rec
-}
 
 test_that("nothing is checked until a button is clicked, and the marks go with another area, with a warning", {
   local_clean_cache()
@@ -549,7 +539,8 @@ test_that("the button is called Check data availability, and the info button nex
     expect_match(text, "Data availability", fixed = TRUE)
     expect_match(text, "Check data availability", fixed = TRUE)
     expect_match(text, "data found", fixed = TRUE)
-    expect_match(text, "polygon with no data for the dataset is not added", fixed = TRUE)
+    expect_match(text, "A polygon with no data for the dataset is", fixed = TRUE)
+    expect_match(text, "next to", fixed = TRUE)
   })
 })
 
@@ -632,5 +623,112 @@ test_that("adding a dataset shows how many of the polygons have been tested", {
     selected_polygons(both)
     session$setInputs(add_dataset = 1)
     expect_equal(Filter(function(x) grepl("polygons tested", x), unlist(seen$set)), c("0 of 2 polygons tested", "1 of 2 polygons tested"))
+  })
+})
+
+test_that("NDVI rasters for a period: the days with data, none is no data, and a failure is unknown", {
+  local_clean_cache()
+  mock_services()
+  days <- 4
+  asked <- new.env()
+  asked$n <- 0
+  local_mocked_bindings(ndc_count = function(collection, roi, trange, limit, token) {
+    asked$n <- asked$n + 1
+    asked$args <- list(collection = collection, trange = trange, token = token)
+    if (is.null(days)) stop("down")
+    days
+  }, .package = "rNDC")
+  geometry <- sf::st_union(sf::st_geometry(area()))
+  period <- as.Date(c("2024-06-01", "2024-06-30"))
+
+  found <- availability_ndvi(geometry, area(), "Geodata", period, "tok")
+  expect_equal(found$status, "yes")
+  expect_equal(found$detail, "NDVI rasters: 4 days with data between 2024-06-01 and 2024-06-30 for the selected area.")
+  expect_equal(asked$args, list(collection = "ndvi", trange = c("2024-06-01", "2024-06-30"), token = "tok"))
+  availability_ndvi(geometry, area(), "Geodata", period, "tok")
+  expect_equal(asked$n, 1)                                              # asked once for the same area and period
+
+  days <- 1
+  expect_match(availability_ndvi(geometry, area(), "Geodata", as.Date(c("2024-07-01", "2024-07-31")), "tok")$detail,
+               "NDVI rasters: 1 day with data between 2024-07-01 and 2024-07-31", fixed = TRUE)
+  days <- 0
+  none <- availability_ndvi(geometry, area(), "Geodata", as.Date(c("2010-01-01", "2010-12-31")), "tok")
+  expect_equal(none$status, "no")
+  expect_equal(none$detail, "No NDVI rasters between 2010-01-01 and 2010-12-31 for the selected area.")
+  days <- NULL
+  down <- availability_ndvi(geometry, area(), "Geodata", as.Date(c("2011-01-01", "2011-12-31")), "tok")
+  expect_equal(down$status, "unknown")
+  expect_match(down$detail, "Could not check for NDVI rasters")
+
+  # outside the Netherlands: no, without asking
+  asked$n <- 0
+  abroad <- area("Own polygon_1", x = 4.6, y = 50.6)
+  out <- availability_ndvi(sf::st_union(sf::st_geometry(abroad)), abroad, "Geodata", period, "tok")
+  expect_equal(c(out$status, asked$n), c("no", 0))
+  expect_match(out$detail, "outside the Netherlands")
+})
+
+test_that("NDVI statistics for a period: the observations of the project polygons, none is no data, other areas have none", {
+  local_clean_cache()
+  mock_services()
+  stats <- tibble::tibble(ndc_id = "1", month = c("2024-05", "2024-06", "2024-06"), ndvi_mean = 0.5, ndvi_std = 0.1, n_obs = c(2L, 3L, 1L))
+  asked <- new.env()
+  asked$n <- 0
+  local_mocked_bindings(ndc_ndvi_stats = function(roi, collection, trange, token, ...) {
+    asked$n <- asked$n + 1
+    asked$args <- list(collection = collection, trange = trange, token = token)
+    if (is.null(stats)) stop("down")
+    stats
+  }, .package = "rNDC")
+  project <- area("Nestboxes_3")
+  geometry <- sf::st_union(sf::st_geometry(project))
+  period <- as.Date(c("2024-05-01", "2024-06-30"))
+
+  found <- availability_ndvi(geometry, project, "Statistics", period, "tok")
+  expect_equal(found$status, "yes")
+  expect_equal(found$detail, "NDVI statistics: 6 observations in 2 months between 2024-05-01 and 2024-06-30 for Nestboxes_3.")
+  expect_equal(asked$args, list(collection = "ndvi-lter", trange = c("2024-05-01", "2024-06-30"), token = "tok"))
+  availability_ndvi(geometry, project, "Statistics", period, "tok")
+  expect_equal(asked$n, 1)                                                # cached
+
+  snl <- area("SNL parcel_2")
+  availability_ndvi(sf::st_union(sf::st_geometry(snl)), snl, "Statistics", period, "tok")
+  expect_equal(asked$args$collection, "ndvi-snl")
+
+  stats <- stats[0, ]
+  none <- availability_ndvi(geometry, project, "Statistics", as.Date(c("2010-01-01", "2010-12-31")), "tok")
+  expect_equal(none$status, "no")
+  expect_equal(none$detail, "No NDVI statistics between 2010-01-01 and 2010-12-31 for Nestboxes_3.")
+  stats <- NULL
+  expect_equal(availability_ndvi(geometry, project, "Statistics", as.Date(c("2011-01-01", "2011-12-31")), "tok")$status, "unknown")
+
+  # an area that is no project area has no statistics, whatever the period (and nothing is asked)
+  asked$n <- 0
+  own <- area("Own polygon_1")
+  no_project <- availability_ndvi(sf::st_union(sf::st_geometry(own)), own, "Statistics", period, "tok")
+  expect_equal(c(no_project$status, asked$n), c("no", 0))
+  expect_equal(no_project$detail, "No NDVI statistics: they exist only for LTER and SNL project areas.")
+})
+
+test_that("the NDVI of the check next to Add uses the dates and the view that are added", {
+  local_clean_cache()
+  mock_services()
+  local_mocked_bindings(ndc_count = function(...) 4, .package = "rNDC")
+  with_server({
+    session$setInputs(selected_dataset = "NDVI", ndvi_mode = "single", ndvi_year = 2024, ndvi_month = 6, ndvi_tab = "Geodata")
+    selected_polygons(selected_polygon())
+    session$setInputs(check_dataset = 1)
+    row <- availability_of(availability(), "NDVI")
+    expect_equal(row$status, "yes")
+    expect_equal(row$detail, "NDVI rasters: 4 days with data between 2024-06-01 and 2024-06-30 for the selected area.")
+    expect_true(add_enabled())
+
+    # a month with no rasters: no data, so Add stays disabled
+    local_mocked_bindings(ndc_count = function(...) 0, .package = "rNDC")
+    session$setInputs(ndvi_month = 7)
+    session$setInputs(check_dataset = 2)
+    expect_equal(availability_of(availability(), "NDVI")$status, "no")
+    expect_match(availability_of(availability(), "NDVI")$detail, "^No NDVI rasters between 2024-07-01 and 2024-07-31")
+    expect_false(add_enabled())
   })
 })

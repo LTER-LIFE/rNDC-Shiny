@@ -75,11 +75,11 @@ server_availability <- function(input, output, session, state, helpers) {
   }, ignoreNULL = FALSE)
 
   # The check of `area` (an sf object) for the `datasets`: the table, or NULL if it could not be made
-  check <- function(area, datasets = all_dataset_names, years = list(), view = NULL, progress = NULL) {
+  check <- function(area, datasets = all_dataset_names, years = list(), view = NULL, progress = NULL, period = NULL) {
     tryCatch(
       httr::with_config(httr::timeout(availability_timeout),
                         availability_check(area, mytoken, agro_token, years, weather_max_km(), datasets = datasets, view = view,
-                                           progress = progress)),
+                                           progress = progress, period = period)),
       error = function(e) {
         message("The availability check failed: ", conditionMessage(e))
         NULL
@@ -150,7 +150,10 @@ server_availability <- function(input, output, session, state, helpers) {
     rows <- withProgress(message = paste0("Checking ", dataset, "..."), value = 0, {
       lapply(seq_len(nrow(added)), function(i) {
         setProgress(value = (i - 1) / nrow(added), detail = sprintf("%d of %d polygons tested", i - 1, nrow(added)))
-        table <- check(added$polygon_sf[[i]], datasets = dataset, years = years, view = view)
+        # the period asked for (two dates), for the datasets that have one
+        period <- c(added$date_from[i], added$date_to[i])
+        if (anyNA(period)) period <- NULL
+        table <- check(added$polygon_sf[[i]], datasets = dataset, years = years, view = view, period = period)
         if (is.null(table)) NULL else table[table$dataset == dataset, , drop = FALSE]
       })
     })

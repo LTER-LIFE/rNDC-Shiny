@@ -7,6 +7,8 @@ server_dataset <- function(input, output, session, state, helpers) {
   adc_available <- state$adc_available
   selection_issues <- state$selection_issues
   add_enabled <- state$add_enabled
+  check_dataset_enabled <- state$check_dataset_enabled
+  check_passed <- state$check_passed
 
   shinyjs::disable(selector = "a[data-value='Statistics']")
 
@@ -31,6 +33,22 @@ server_dataset <- function(input, output, session, state, helpers) {
       type = "warning", duration = 10
     )
   }
+
+  # What the check of a dataset was made for: the dataset and its view (tab), the year, date or months asked for, the Weather
+  # distance and the selected polygons. When any of them changes the check no longer holds, and Add to overview is disabled
+  # until the dataset is checked again.
+  request_settings <- c("selected_year", "landuse_year", "nitrogen_year", "ndvi_mode", "ndvi_year", "ndvi_month",
+                        "ndvi_from_year", "ndvi_from_month", "ndvi_to_year", "ndvi_to_month", "weather_mode", "weather_date",
+                        "weather_period")
+  request_signature <- reactive({
+    ds <- input$selected_dataset
+    sel <- selected_polygons()
+    list(dataset = ds,
+         view = if (is.null(ds) || !nzchar(ds)) NULL else input[[dataset_tab_id(ds)]],
+         settings = stats::setNames(lapply(request_settings, function(name) input[[name]]), request_settings),
+         weather_max_km = state$weather_max_km(),
+         polygons = if (is.null(sel) || nrow(sel) == 0) NULL else rlang::hash(sel$wkt))
+  })
 
   observe({
     ds <- NULL
@@ -76,8 +94,12 @@ server_dataset <- function(input, output, session, state, helpers) {
       if (length(problems_for(selection_issues(), ds)) > 0) enabled <- FALSE
     }
 
-    add_enabled(enabled)
-    session$sendCustomMessage("ndc_toggle_add_button", enabled)
+    # the dataset can be checked when its settings are valid; it can be added when the check of these settings has passed
+    check_dataset_enabled(enabled)
+    session$sendCustomMessage("ndc_toggle_check_dataset_button", enabled)
+    ready <- enabled && identical(check_passed(), request_signature())
+    add_enabled(ready)
+    session$sendCustomMessage("ndc_toggle_add_button", ready)
   })
 
   observeEvent(input$selected_dataset, {
@@ -195,7 +217,9 @@ server_dataset <- function(input, output, session, state, helpers) {
     }
   }
 
-  observeEvent(input$add_dataset, {
+  # What the settings ask for: list(dataset, view, year, date_from, date_to, rows) with a row (of the overview) for each selected
+  # polygon, or NULL after saying what is wrong with them. `refused` starts the message about the limits ("Not added").
+  read_request <- function(refused) {
     sel <- selected_polygons()
     if (is.null(sel) || nrow(sel) == 0) {
       showNotification("\u26a0 Please select or draw at least one polygon first.", type = "error", duration = 5)
@@ -206,12 +230,13 @@ server_dataset <- function(input, output, session, state, helpers) {
       showNotification("This dataset needs an AgroDataCube token (ADC_TOKEN).", type = "error", duration = 5)
       return(NULL)
     }
-    # the same verification as the one of the check button: a selection above the limits can only be used for Weather
+    # the same verification as the one of the check button under the map: a selection above the limits can only be used for
+    # the datasets that the limits do not apply to
     issues <- problems_for(selection_issues(), input$selected_dataset)
     if (length(issues) > 0) {
       only_area <- identical(names(issues), "area") && !input$selected_dataset %in% area_exempt_datasets
-      showNotification(paste0("Not added: ", problems_text(issues), " Select fewer or smaller polygons",
-                              if (only_area) ", or add Weather, which has no area limit." else ".", " ",
+      showNotification(paste0(refused, ": ", problems_text(issues), " Select fewer or smaller polygons",
+                              if (only_area) ", or use Weather, which has no area limit." else ".", " ",
                               contact_sentence("larger areas or help")), type = "error", duration = 12)
       return(NULL)
     }
@@ -286,61 +311,90 @@ server_dataset <- function(input, output, session, state, helpers) {
     cur_tab_val <- if (!is.null(isolate(input[[tab_input_id]]))) isolate(input[[tab_input_id]]) else default_tab
     view_label <- if (tolower(as.character(cur_tab_val)) == "statistics") "Statistics" else "Geodata"
 
-    ov <- overview()
-    new_rows <- list()
-
-    for (i in seq_len(nrow(sel))) {
+    rows <- lapply(seq_len(nrow(sel)), function(i) {
       poly <- sel[i, , drop = FALSE]
       assigned_name <- if ("source_name" %in% names(poly) && !is.na(poly$source_name[1]) && nzchar(as.character(poly$source_name[1]))) {
         as.character(poly$source_name[1])
       } else {
         "Own polygon"
       }
+      tibble::tibble(dataset = ds_label, view = view_label, year = year_val, polygon = assigned_name, wkt = poly$wkt[1],
+                     polygon_sf = list(poly), date_from = date_from_val, date_to = date_to_val)
+    })
+    list(dataset = ds_label, view = view_label, year = year_val, rows = dplyr::bind_rows(rows))
+  }
 
-      is_dup <- FALSE
-      if (nrow(ov) > 0) {
-        same_poly <- ov$wkt == poly$wkt[1]
-        same_ds <- ov$dataset == ds_label
-        same_view <- ov$view == view_label
-        same_year <- vapply(seq_len(nrow(ov)), function(j) same_na(ov$year[j], year_val), logical(1))
-        same_from <- vapply(seq_len(nrow(ov)), function(j) same_na(ov$date_from[j], date_from_val), logical(1))
-        same_to <- vapply(seq_len(nrow(ov)), function(j) same_na(ov$date_to[j], date_to_val), logical(1))
-        same_name <- ov$polygon == assigned_name
-        is_dup <- any(same_ds & same_view & same_poly & same_name & same_year & same_from & same_to)
-      }
+  # The rows of `rows` that are not in the overview `ov` yet (same dataset, view, polygon, year and dates)
+  rows_not_in <- function(rows, ov) {
+    if (nrow(ov) == 0) return(rows)
+    present <- vapply(seq_len(nrow(rows)), function(i) {
+      any(ov$wkt == rows$wkt[i] & ov$dataset == rows$dataset[i] & ov$view == rows$view[i] & ov$polygon == rows$polygon[i] &
+            vapply(seq_len(nrow(ov)), function(j) same_na(ov$year[j], rows$year[i]), NA) &
+            vapply(seq_len(nrow(ov)), function(j) same_na(ov$date_from[j], rows$date_from[i]), NA) &
+            vapply(seq_len(nrow(ov)), function(j) same_na(ov$date_to[j], rows$date_to[i]), NA))
+    }, NA)
+    rows[!present, , drop = FALSE]
+  }
 
-      if (!is_dup) {
-        new_rows[[length(new_rows) + 1]] <- tibble::tibble(
-          dataset = ds_label,
-          view = view_label,
-          year = year_val,
-          polygon = assigned_name,
-          wkt = poly$wkt[1],
-          polygon_sf = list(poly),
-          date_from = date_from_val,
-          date_to = date_to_val
-        )
-      }
+  # Is the time of retrieving the overview `ov` with the rows `added` within the limit? If not, say so. The whole overview is
+  # retrieved at once, so it is the total that counts. Returns the seconds, or NULL when they are above the limit.
+  within_time <- function(ov, added) {
+    seconds <- sum(retrieve_estimate_seconds(ov$dataset, ov$view, ov$date_from, ov$date_to, ov$polygon_sf),
+                   retrieve_estimate_seconds(added$dataset, added$view, added$date_from, added$date_to, added$polygon_sf))
+    if (seconds > max_request_seconds()) {
+      showNotification(retrieve_too_long_message(seconds), type = "error", duration = 12)
+      return(NULL)
     }
+    seconds
+  }
 
-    if (length(new_rows) > 0) {
-      added <- dplyr::bind_rows(new_rows)
+  # The button next to Add to overview: all the checks of adding the dataset, for the settings above, without adding it
+  observeEvent(input$check_dataset, {
+    request <- read_request("Not checked")
+    if (is.null(request)) return(NULL)
+    rows <- request$rows
+    check_passed(NULL)
+
+    found <- helpers$availability$check_added(rows, request$dataset, request$view, request$year)
+    if (all(found$none)) {
+      showNotification(availability_no_data_message(found$rows[[1]], rows$polygon, "Nothing can be added"), type = "error", duration = 12)
+      return(NULL)
+    }
+    if (any(found$none)) {
+      showNotification(paste0("No ", request$dataset, " data was found for ", paste(rows$polygon[found$none], collapse = ", "),
+                              ": the dataset will be added for the other polygons only."), type = "warning", duration = 12)
+    }
+    added <- rows_not_in(rows[!found$none, , drop = FALSE], overview())
+    seconds <- within_time(overview(), added)
+    if (is.null(seconds)) return(NULL)
+
+    check_passed(request_signature())
+    showNotification(paste0("Checked: ", request$dataset, " can be added for the settings above.",
+                            if (seconds > warn_request_seconds) paste0(" ", retrieve_long_warning(seconds)) else ""),
+                     type = "message", duration = 8)
+  })
+
+  observeEvent(input$add_dataset, {
+    request <- read_request("Not added")
+    if (is.null(request)) return(NULL)
+    ds_label <- request$dataset
+    view_label <- request$view
+    ov <- overview()
+    new_rows <- rows_not_in(request$rows, ov)
+
+    if (nrow(new_rows) > 0) {
+      added <- new_rows
       # a polygon where the services have no data for the dataset is left out, with a message (a check that could not be
       # made does not stop it); the result is also what the menu shows for the dataset
-      found <- helpers$availability$check_added(added, ds_label, view_label, year_val)
+      found <- helpers$availability$check_added(added, ds_label, view_label, request$year)
       if (any(found$none)) {
         showNotification(availability_no_data_message(found$rows[[which(found$none)[1]]], added$polygon[found$none]),
                          type = "error", duration = 12)
         added <- added[!found$none, , drop = FALSE]
         if (nrow(added) == 0) return(NULL)
       }
-      # the whole overview is retrieved at once, so it is the total that counts
-      seconds <- sum(retrieve_estimate_seconds(ov$dataset, ov$view, ov$date_from, ov$date_to, ov$polygon_sf),
-                     retrieve_estimate_seconds(added$dataset, added$view, added$date_from, added$date_to, added$polygon_sf))
-      if (seconds > max_request_seconds()) {
-        showNotification(retrieve_too_long_message(seconds), type = "error", duration = 12)
-        return(NULL)
-      }
+      seconds <- within_time(ov, added)
+      if (is.null(seconds)) return(NULL)
       overview(dplyr::bind_rows(ov, added))
       if (seconds > warn_request_seconds) {
         showNotification(retrieve_long_warning(seconds), type = "warning", duration = 10)
