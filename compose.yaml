@@ -1,12 +1,12 @@
 services:
   naturedatacube:
     # the image is named after the version of the app, which is built on the rNDC release below
-    image: rndc-shiny:0.5.2
+    image: rndc-shiny:0.6.0
     build:
       context: .
       args:
         # rNDC tag (or branch or commit) to install (see the Dockerfile)
-        RNDC_REF: ${RNDC_REF:-v0.5.2}
+        RNDC_REF: ${RNDC_REF:-v0.6.0}
     env_file: .env
     ports:
       - "3838:3838"

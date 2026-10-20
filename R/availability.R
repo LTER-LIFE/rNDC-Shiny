@@ -74,19 +74,45 @@ availability_adc_features <- function(option, geometry, extra, token, test = fun
 # a status from a TRUE/FALSE, or NA/NULL (the request failed)
 availability_status_of <- function(found) if (is.null(found) || is.na(found)) "unknown" else if (isTRUE(found)) "yes" else "no"
 
-availability_weather <- function(geometry, key, token, max_km = weather_max_station_km) {
+availability_weather <- function(geometry, key, token, max_km = weather_max_station_km, period = NULL) {
   cache <- cache_key("avail", "weather", key)
-  distance <- availability_cached(cache, function() {
-    min(rNDC::adc_weather_station(sf::st_as_text(geometry), token = token)$distances) / 1000
+  station <- availability_cached(cache, function() {
+    closest <- rNDC::adc_weather_station(sf::st_as_text(geometry), token = token)
+    list(id = closest$closest_id, km = min(closest$distances) / 1000)
   })
-  if (is.null(distance)) return(list(status = "unknown", detail = availability_could_not("a weather station", cache)))
-  km <- round(distance)
-  if (distance <= max_km) {
-    list(status = "yes", detail = paste0("A weather station is ", km, " km from the selected area."))
-  } else {
-    list(status = "no", detail = paste0("The closest weather station is ", km, " km from the selected area (the limit is ",
-                                        format(max_km), " km)."))
+  if (is.null(station)) return(list(status = "unknown", detail = availability_could_not("a weather station", cache)))
+  km <- round(station$km)
+  if (station$km > max_km) {
+    return(list(status = "no", detail = paste0("The closest weather station is ", km, " km from the selected area (the limit is ",
+                                               format(max_km), " km).")))
   }
+  if (is.null(period)) return(list(status = "yes", detail = paste0("A weather station is ", km, " km from the selected area.")))
+  availability_weather_observations(station, km, period, token)
+}
+
+# The days with observations of the station in the period (up to one page of 500 days; more is "at least"); if there are none,
+# when its observations start
+availability_weather_observations <- function(station, km, period, token) {
+  from <- format(as.Date(period[1]), "%Y%m%d")
+  to <- format(as.Date(period[2]), "%Y%m%d")
+  observed <- function(params) {
+    res <- rNDC::adc_get(option = "Meteo_data", params = c(output_epsg = "4326", meteostation = as.character(station$id), params,
+                                                           page_offset = "0"), token = token)
+    unique(stats::na.omit(vapply(res$features, function(f) as.character(f$properties$datum %||% NA_character_), "")))
+  }
+  cache <- cache_key("avail", "weather-days", station$id, from, to)
+  days <- availability_cached(cache, function() observed(c(fromdate = from, todate = to, page_size = "500")))
+  who <- paste0("station ", station$id, " (", km, " km away)")
+  if (is.null(days)) return(list(status = "unknown", detail = availability_could_not("Weather observations", cache)))
+  between <- availability_period_text(period)
+  if (length(days) > 0) {
+    n <- if (length(days) >= 500) "at least 500 days" else paste0(length(days), if (length(days) == 1) " day" else " days")
+    return(list(status = "yes", detail = paste0("Weather: ", who, " has observations on ", n, " between ", between, ".")))
+  }
+  first <- availability_cached(cache_key("avail", "weather-first", station$id),
+                               function() observed(c(fromdate = "19000101", todate = format(Sys.Date(), "%Y%m%d"), page_size = "1")))
+  since <- if (length(first) > 0) paste0(" Its observations start on ", first[1], ".") else ""
+  list(status = "no", detail = paste0("Weather: ", who, " has no observations between ", between, ".", since))
 }
 
 availability_fields <- function(geometry, key, token, year) {
@@ -96,17 +122,22 @@ availability_fields <- function(geometry, key, token, year) {
   cache <- cache_key("avail", "fields", key, year)
   found <- availability_cached(cache, function() availability_adc_features("Fields", geometry, c(year = as.character(year)), token))
   status <- availability_status_of(found)
+  last_year <- as.integer(format(Sys.Date(), "%Y")) - 1L
   list(status = status, detail = switch(status,
-    yes = paste0("Agricultural fields for ", year, " are available for the selected area."),
-    no = paste0("No Agricultural fields for ", year, " found for the selected area."),
+    yes = paste0("Agricultural fields ", year, ": fields found in the selected area."),
+    no = paste0("No agricultural fields in ", year, " for the selected area (the register has fields from ", fields_min_year,
+                " to ", last_year, ")."),
     availability_could_not("Agricultural fields", cache)))
 }
 
-# Land Use, Nitrogen, Soil map and AHN: from the table of `stac_availability()`
+# "a", "a and b", "a, b and c"
+availability_and <- function(x) if (length(x) <= 1) x else paste0(paste(x[-length(x)], collapse = ", "), " and ", x[length(x)])
+
+# Land Use, Nitrogen, Soil map and AHN: from the table of `stac_availability()`. With a year the message is about that year, and when
+# it has no data the years that have are listed.
 availability_raster <- function(dataset, collections, table, year) {
   if (is.null(table)) return(list(status = "unknown", detail = paste0("Could not check for ", dataset, " data.")))
   has_year <- !is.null(year) && nzchar(as.character(year))
-  what <- if (has_year) paste0(dataset, " data for ", year) else paste0(dataset, " data")
   present <- vapply(collections, function(collection) {
     rows <- table[table$collection == collection, , drop = FALSE]
     if (nrow(rows) == 0) return(FALSE)
@@ -115,16 +146,42 @@ availability_raster <- function(dataset, collections, table, year) {
     # a row without a year comes from a separate question about the collection: it cannot say which years
     any(rows$n_items[is.na(rows$year) | rows$year == as.character(year)] > 0)
   }, NA)
+  years <- sort(unique(table$year[table$collection %in% collections & !is.na(table$year) & !is.na(table$n_items) & table$n_items > 0]))
   missing <- collections[!is.na(present) & !present]
+  where <- " for the selected area"
   if (anyNA(present)) {
-    list(status = "unknown", detail = paste0("Could not check for ", dataset, " data."))
-  } else if (length(missing) == 0) {
-    list(status = "yes", detail = paste0(what, " is available for the selected area."))
-  } else {
-    layers <- if (length(collections) > 1) paste0(" (", paste(missing, collapse = ", "), ")") else ""
-    list(status = if (length(missing) == length(collections)) "no" else "partial",
-         detail = paste0("No ", what, " found for the selected area", layers, "."))
+    return(list(status = "unknown", detail = paste0("Could not check for ", dataset, " data.")))
   }
+  label <- if (has_year) paste0(dataset, " ", year) else dataset
+  if (length(missing) == 0) {
+    shown <- if (length(collections) > 1) paste0(availability_and(collections), " available") else "raster available"
+    in_years <- if (!has_year && length(years) > 0) paste0(" (", if (length(years) == 1) "year " else "years ", paste(years, collapse = ", "), ")") else ""
+    return(list(status = "yes", detail = paste0(label, ": ", shown, where, in_years, ".")))
+  }
+  if (length(missing) < length(collections)) {
+    return(list(status = "partial", detail = paste0(label, ": only ", availability_and(setdiff(collections, missing)), " available", where,
+                                                    " (", availability_and(missing), " missing).")))
+  }
+  list(status = "no", detail = paste0("No ", dataset, " data", if (has_year) paste0(" for ", year) else "", " found", where, ".",
+                                      if (has_year && length(years) > 0) paste0(" Available years: ", paste(years, collapse = ", "), ".") else ""))
+}
+
+# AHN: the same, and which layers there are (terrain height, object height) and for which years
+availability_ahn <- function(table, geometry, ndc_token) {
+  result <- availability_raster("AHN", ndc_ahn_collection, table, NULL)
+  if (!result$status %in% c("yes", "partial")) return(result)
+  key <- sf::st_as_text(geometry, digits = 6)
+  layers <- availability_cached(cache_key("avail", "ahn-layers", key), function() {
+    items <- rNDC::stac_collect_metadata(geometry, ndc_token, rNDC::ndc_endpoint(), ndc_ahn_collection)
+    unique(items[!is.na(items$layer), c("layer", "year")])
+  })
+  if (is.null(layers) || nrow(layers) == 0) return(result)
+  layers <- layers[order(layers$layer), , drop = FALSE]
+  named <- vapply(seq_len(nrow(layers)), function(i) {
+    label <- ahn_layer_labels[[tolower(layers$layer[i])]] %||% layers$layer[i]
+    paste0(label, " (", layers$year[i], ")")
+  }, "")
+  list(status = result$status, detail = paste0("AHN: ", availability_and(named), " available for the selected area."))
 }
 
 # Does the area (an sfc in EPSG:4326) intersect the Netherlands? TRUE, FALSE, or NA if that cannot be told. The items of the
@@ -177,7 +234,7 @@ availability_ndvi <- function(geometry, area, view = NULL, period = NULL, ndc_to
   } else {
     "no statistics (only for LTER and SNL project areas)"
   }
-  list(status = status, detail = paste0("NDVI: ", raster_text, "; ", stats_text, ". Check a period with the button next to Add to overview."))
+  list(status = status, detail = paste0("NDVI: ", raster_text, "; ", stats_text, ". To check a period, click the Check data availability button next to the Add to overview button."))
 }
 
 # "2024-06-01 and 2024-06-30"
@@ -249,14 +306,14 @@ availability_check <- function(area, ndc_token, adc_token, years = list(), weath
   }
 
   check <- list(
-    "Weather" = function() if (adc_ok) availability_weather(geometry, key, adc_token, weather_max_km) else needs_adc,
+    "Weather" = function() if (adc_ok) availability_weather(geometry, key, adc_token, weather_max_km, period) else needs_adc,
     "Nitrogen" = function() availability_raster("Nitrogen", nitrogen_layer_choices, stac, years[["Nitrogen"]]),
     "NDVI" = function() availability_ndvi(geometry, area, view, period, ndc_token),
     "Vegetation structure" = function() availability_unwired("Vegetation structure"),
     "Ground water table" = function() availability_unwired("Ground water table"),
     "Soil map" = function() availability_only_in_netherlands(availability_raster("Soil map", ndc_soil_collection, stac, NULL),
                                                              "Soil map", geometry),
-    "AHN" = function() availability_only_in_netherlands(availability_raster("AHN", ndc_ahn_collection, stac, NULL), "AHN", geometry),
+    "AHN" = function() availability_only_in_netherlands(availability_ahn(stac, geometry, ndc_token), "AHN", geometry),
     "Agricultural fields" = function() if (adc_ok) availability_fields(geometry, key, adc_token, years[["Agricultural fields"]]) else needs_adc,
     "Land Use" = function() availability_only_in_netherlands(availability_raster("Land Use", ndc_landuse_collection, stac, years[["Land Use"]]),
                                                              "Land Use", geometry)

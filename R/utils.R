@@ -1,5 +1,8 @@
 # What everything shares.
 
+# x, or y if x is NULL (in base R since 4.4)
+`%||%` <- function(x, y) if (is.null(x)) y else x
+
 # A positive whole number from an environment variable, or `default`
 env_count <- function(name, default) {
   value <- suppressWarnings(as.integer(Sys.getenv(name)))

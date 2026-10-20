@@ -23,7 +23,7 @@ RUN apt-get update && apt-get install -y \
 # 1. The rNDC package, which the app is built on, at the tag of an rNDC release (a branch would change under the
 #    build). The reference can be overridden at build time (`docker build --build-arg RNDC_REF=main .`). Its own dependencies are installed with it.
 #    (The default CRAN repository of the rocker images provides binary packages.)
-ARG RNDC_REF=v0.5.2
+ARG RNDC_REF=v0.6.0
 RUN --mount=type=secret,id=github_pat,required=false <<INSTALL
 set -e
 if [ -s /run/secrets/github_pat ]; then export GITHUB_PAT="$(cat /run/secrets/github_pat)"; fi
@@ -48,7 +48,7 @@ RUN R CMD INSTALL --no-multiarch /tmp/rNDC.Shiny && rm -rf /tmp/rNDC.Shiny \
 # What the image is made of, for whoever has the image (`docker inspect`): the rNDC release inside it (RNDC_REF, above)
 # and the version of this package
 LABEL org.opencontainers.image.title="rNDC.Shiny" \
-      org.opencontainers.image.version="0.5.2" \
+      org.opencontainers.image.version="0.6.0" \
       org.opencontainers.image.source="https://github.com/LTER-LIFE/rNDC-Shiny" \
       nl.lter-life.rndc.ref="${RNDC_REF}"
 

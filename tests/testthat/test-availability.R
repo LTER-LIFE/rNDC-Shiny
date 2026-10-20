@@ -1,26 +1,35 @@
 # "Which datasets have data for the selected area?": the check per dataset with the services mocked, the weather distance and the
 # marks in the app. (R/availability.R, R/server_availability.R)
 
-test_that("raster availability depends on the year and names the missing layers", {
+test_that("raster availability depends on the year, names the missing layers, and lists the years that have data", {
   table <- data.frame(collection = c("ntot", "nox", "ntot"), year = c("2024", "2024", "2025"), n_items = c(1, 2, 1))
   layers <- c("ntot", "nox", "nh3")
 
-  expect_equal(availability_raster("Nitrogen", layers, table, "2024")$status, "partial")
-  expect_equal(availability_raster("Nitrogen", layers, table, "2024")$detail,
-               "No Nitrogen data for 2024 found for the selected area (nh3).")
-  expect_equal(availability_raster("Nitrogen", c("ntot", "nox"), table, "2024")$status, "yes")
-  expect_equal(availability_raster("Nitrogen", c("ntot", "nox"), table, "2024")$detail,
-               "Nitrogen data for 2024 is available for the selected area.")
-  expect_equal(availability_raster("Nitrogen", layers, table, "2031")$status, "no")
-  expect_equal(availability_raster("Nitrogen", layers, table, "2031")$detail,
-               "No Nitrogen data for 2031 found for the selected area (ntot, nox, nh3).")
-  # without a year any year will do
-  expect_equal(availability_raster("Nitrogen", "ntot", table, NULL)$detail, "Nitrogen data is available for the selected area.")
+  partial <- availability_raster("Nitrogen", layers, table, "2024")
+  expect_equal(partial$status, "partial")
+  expect_equal(partial$detail, "Nitrogen 2024: only ntot and nox available for the selected area (nh3 missing).")
+  all_there <- availability_raster("Nitrogen", c("ntot", "nox"), table, "2024")
+  expect_equal(all_there$status, "yes")
+  expect_equal(all_there$detail, "Nitrogen 2024: ntot and nox available for the selected area.")
+  none <- availability_raster("Nitrogen", layers, table, "2031")
+  expect_equal(none$status, "no")
+  expect_equal(none$detail, "No Nitrogen data for 2031 found for the selected area. Available years: 2024, 2025.")
+  # one raster: the dataset and the year
+  one <- availability_raster("Land Use", "ntot", table, "2025")
+  expect_equal(one$detail, "Land Use 2025: raster available for the selected area.")
+  expect_equal(availability_raster("Land Use", "ntot", table, "1999")$detail,
+               "No Land Use data for 1999 found for the selected area. Available years: 2024, 2025.")
+  # without a year any year will do, and the years are told
+  expect_equal(availability_raster("Nitrogen", "ntot", table, NULL)$detail,
+               "Nitrogen: raster available for the selected area (years 2024, 2025).")
+  expect_equal(availability_raster("Soil map", "nox", table, NULL)$detail, "Soil map: raster available for the selected area (year 2024).")
   # a collection that was asked separately cannot say which years: it counts for any year
   separate <- data.frame(collection = "lgn", year = NA_character_, n_items = 5)
   expect_equal(availability_raster("Land Use", "lgn", separate, "2024")$status, "yes")
   # nothing found / the check failed
-  expect_equal(availability_raster("Land Use", "lgn", table[0, ], "2024")$status, "no")
+  nothing <- availability_raster("Land Use", "lgn", table[0, ], "2024")
+  expect_equal(nothing$status, "no")
+  expect_equal(nothing$detail, "No Land Use data for 2024 found for the selected area.")     # (no years to list)
   expect_equal(availability_raster("Land Use", "lgn", NULL, "2024")$status, "unknown")
   failed <- data.frame(collection = "lgn", year = NA_character_, n_items = NA_real_)
   expect_equal(availability_raster("Land Use", "lgn", failed, "2024")$status, "unknown")
@@ -32,18 +41,31 @@ mock_services <- function(env = parent.frame(), fields = 1, distance = 12000,
                                             year = "2024", n_items = 1)) {
   rec <- new.env()
   rec$calls <- character(0)
+  rec$meteo <- list()
+  # the days (text) with observations of the station for the dates in `params`: all of them by default
+  rec$observed <- function(params) {
+    from <- as.Date(params[["fromdate"]], "%Y%m%d")
+    to <- as.Date(params[["todate"]], "%Y%m%d")
+    format(seq(from, min(to, from + 499), by = "day"))
+  }
   testthat::local_mocked_bindings(
     adc_get = function(url = NULL, option = NULL, params = NULL, server = "adc", token, ...) {
+      if (identical(option, "Meteo_data")) {
+        rec$calls <- c(rec$calls, "Meteo_data")
+        rec$meteo <- c(rec$meteo, list(params))
+        days <- rec$observed(params)
+        return(list(features = lapply(days, function(d) list(properties = list(datum = d)))))
+      }
       if (!is.null(option)) {
         rec$calls <- c(rec$calls, option)
         rec$params <- params
         return(list(features = if (fields > 0) lapply(seq_len(fields), function(i) list(properties = list(a = 1))) else list()))
       }
-      stop("only Fields is asked of the AgroDataCube")
+      stop("only Fields and Meteo_data are asked of the AgroDataCube")
     },
     adc_weather_station = function(roi, token, ...) {
       rec$calls <- c(rec$calls, "stations")
-      list(distances = c(distance + 5000, distance))
+      list(distances = c(distance + 5000, distance), closest_id = "275")
     },
     .package = "rNDC", .env = env
   )
@@ -52,6 +74,7 @@ mock_services <- function(env = parent.frame(), fields = 1, distance = 12000,
       rec$calls <- c(rec$calls, "stac")
       stac
     },
+    stac_collect_metadata = function(...) tibble::tibble(layer = c("dtm", "ohn"), year = c("2019", "2022"), title = c("DTM", "OHN")),
     .package = "rNDC", .env = env
   )
   rec
@@ -63,6 +86,28 @@ area <- function(name = "Own polygon", x = 5.66, y = 51.99) {
 }
 
 status_of_dataset <- function(table, dataset) table$status[table$dataset == dataset]
+
+test_that("the AHN message names the layers and their years", {
+  local_clean_cache()
+  table <- data.frame(collection = "ahnmetrics", year = c("2019", "2022"), n_items = 1)
+  items <- tibble::tibble(layer = c("ohn", "dtm"), year = c("2022", "2019"), title = c("OHN", "DTM"))
+  asked <- new.env()
+  asked$n <- 0
+  local_mocked_bindings(stac_collect_metadata = function(...) { asked$n <- asked$n + 1; items }, .package = "rNDC")
+  geometry <- sf::st_union(sf::st_geometry(area()))
+  found <- availability_ahn(table, geometry, "t")
+  expect_equal(found$status, "yes")
+  expect_equal(found$detail, "AHN: terrain height (2019) and object height (2022) available for the selected area.")
+  availability_ahn(table, geometry, "t")
+  expect_equal(asked$n, 1)                                            # (cached)
+
+  # the layers could not be read: the general message
+  local_clean_cache()
+  items <- NULL
+  local_mocked_bindings(stac_collect_metadata = function(...) stop("down"), .package = "rNDC")
+  expect_equal(availability_ahn(table, geometry, "t")$detail, "AHN: raster available for the selected area (years 2019, 2022).")
+  expect_equal(availability_ahn(table[0, ], geometry, "t")$status, "no")
+})
 
 test_that("every dataset gets a status for an area in the Netherlands", {
   local_clean_cache()
@@ -76,7 +121,9 @@ test_that("every dataset gets a status for an area in the Netherlands", {
   expect_equal(status_of_dataset(table, "Vegetation structure"), "na")
   expect_equal(status_of_dataset(table, "Ground water table"), "na")
   expect_match(table$detail[table$dataset == "Weather"], "A weather station is 12 km from the selected area.")
-  expect_match(table$detail[table$dataset == "Agricultural fields"], "for 2023 are available")
+  expect_match(table$detail[table$dataset == "Agricultural fields"], "Agricultural fields 2023: fields found in the selected area.", fixed = TRUE)
+  expect_equal(table$detail[table$dataset == "Land Use"], "Land Use 2024: raster available for the selected area.")
+  expect_equal(table$detail[table$dataset == "AHN"], "AHN: terrain height (2019) and object height (2022) available for the selected area.")
 })
 
 test_that("the services say no, and the check says so", {
@@ -145,7 +192,7 @@ test_that("NDVI: rasters for the Netherlands, statistics for project areas", {
   mock_services()
   drawn <- availability_check(area("Own polygon_1"), "t", "t")
   expect_equal(status_of_dataset(drawn, "NDVI"), "yes")
-  expect_match(drawn$detail[drawn$dataset == "NDVI"], "NDVI: rasters cover the selected area; no statistics (only for LTER and SNL project areas). Check a period with the button next to Add to overview.", fixed = TRUE)
+  expect_match(drawn$detail[drawn$dataset == "NDVI"], "NDVI: rasters cover the selected area; no statistics (only for LTER and SNL project areas). To check a period, click the Check data availability button next to the Add to overview button.", fixed = TRUE)
 
   project <- availability_check(area("Nestboxes_3"), "t", "t")
   expect_match(project$detail[project$dataset == "NDVI"], "statistics for 1 of 1 selected polygon")
@@ -730,5 +777,82 @@ test_that("the NDVI of the check next to Add uses the dates and the view that ar
     expect_equal(availability_of(availability(), "NDVI")$status, "no")
     expect_match(availability_of(availability(), "NDVI")$detail, "^No NDVI rasters between 2024-07-01 and 2024-07-31")
     expect_false(add_enabled())
+  })
+})
+
+test_that("Weather for the dates asked for: the days with observations, none is no data with the start of the series, and the distance first", {
+  local_clean_cache()
+  rec <- mock_services()
+  geometry <- sf::st_union(sf::st_geometry(area()))
+  period <- as.Date(c("2024-06-01", "2024-06-07"))
+
+  found <- availability_weather(geometry, "k1", "t", period = period)
+  expect_equal(found$status, "yes")
+  expect_equal(found$detail, "Weather: station 275 (12 km away) has observations on 7 days between 2024-06-01 and 2024-06-07.")
+  expect_equal(rec$meteo[[1]][["meteostation"]], "275")
+  expect_equal(unname(rec$meteo[[1]][c("fromdate", "todate", "page_size")]), c("20240601", "20240607", "500"))
+  n <- length(rec$calls)
+  availability_weather(geometry, "k1", "t", period = period)
+  expect_length(rec$calls, n)                                          # cached
+
+  # one day, and a long period (a page of 500 days is all that is asked)
+  expect_match(availability_weather(geometry, "k1", "t", period = as.Date(c("2024-06-01", "2024-06-01")))$detail,
+               "has observations on 1 day between 2024-06-01 and 2024-06-01.", fixed = TRUE)
+  expect_match(availability_weather(geometry, "k1", "t", period = as.Date(c("2000-01-01", "2024-06-01")))$detail,
+               "has observations on at least 500 days between 2000-01-01 and 2024-06-01.", fixed = TRUE)
+
+  # no observations in the period: no data, and when the station starts
+  rec$observed <- function(params) if (params[["fromdate"]] == "19000101") "1960-01-03" else character(0)
+  none <- availability_weather(geometry, "k1", "t", period = as.Date(c("1950-01-01", "1950-01-07")))
+  expect_equal(none$status, "no")
+  expect_equal(none$detail, "Weather: station 275 (12 km away) has no observations between 1950-01-01 and 1950-01-07. Its observations start on 1960-01-03.")
+  local_clean_cache()                                                  # (the start of the series is remembered per station)
+  rec$observed <- function(params) character(0)
+  expect_equal(availability_weather(geometry, "k1", "t", period = as.Date(c("1951-01-01", "1951-01-07")))$detail,
+               "Weather: station 275 (12 km away) has no observations between 1951-01-01 and 1951-01-07.")
+
+  # the request fails: unknown
+  local_mocked_bindings(adc_get = function(...) stop("down"), .package = "rNDC")
+  down <- availability_weather(geometry, "k1", "t", period = as.Date(c("2020-01-01", "2020-01-07")))
+  expect_equal(down$status, "unknown")
+  expect_match(down$detail, "Could not check for Weather observations")
+
+  # too far: the distance says so, and the observations are not asked
+  local_clean_cache()
+  rec2 <- mock_services(distance = 80000)
+  far <- availability_weather(geometry, "k2", "t", period = period)
+  expect_equal(far$status, "no")
+  expect_match(far$detail, "closest weather station is 80 km from the selected area", fixed = TRUE)
+  expect_false("Meteo_data" %in% rec2$calls)
+})
+
+test_that("Agricultural fields: the year, and the years that the register has when there are none", {
+  local_clean_cache()
+  mock_services()
+  geometry <- sf::st_union(sf::st_geometry(area()))
+  expect_equal(availability_fields(geometry, "kf", "t", 2023)$detail, "Agricultural fields 2023: fields found in the selected area.")
+  local_clean_cache()
+  mock_services(fields = 0)
+  none <- availability_fields(geometry, "kf", "t", 2008)
+  expect_equal(none$status, "no")
+  last <- as.integer(format(Sys.Date(), "%Y")) - 1L
+  expect_equal(none$detail, paste0("No agricultural fields in 2008 for the selected area (the register has fields from 2009 to ", last, ")."))
+})
+
+test_that("the check of a dataset with the dates it is added for passes them on to Weather", {
+  local_clean_cache()
+  rec <- mock_services()
+  with_server({
+    selected_polygons(selected_polygon())
+    session$setInputs(selected_dataset = "Weather", weather_mode = "period", weather_period = as.Date(c("2024-06-01", "2024-06-10")))
+    session$setInputs(check_dataset = 1)
+    expect_match(availability_of(availability(), "Weather")$detail, "has observations on 10 days between 2024-06-01 and 2024-06-10", fixed = TRUE)
+    expect_true(add_enabled())
+
+    rec$observed <- function(params) character(0)
+    session$setInputs(weather_period = as.Date(c("2024-07-01", "2024-07-10")))
+    session$setInputs(check_dataset = 2)
+    expect_equal(availability_of(availability(), "Weather")$status, "no")
+    expect_false(add_enabled())                                        # no observations: no data
   })
 })
