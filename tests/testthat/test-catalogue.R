@@ -156,3 +156,22 @@ test_that("the first dates of the datasets of other services are those of rNDC",
   expect_equal(fields_min_year, 2009L)
   expect_equal(ndvi_min_month, as.Date("2017-05-01"))
 })
+
+test_that("the dialog has the limits and where to go in its footer, also when the datasets could not be listed", {
+  local_clean_cache()
+  mock_check()
+  local_stac_api(pages = list(list()), status = 500L)
+  shown <- new.env()
+  local_mocked_bindings(showModal = function(ui, ...) shown$ui <- ui)
+
+  with_server({
+    session$setInputs(check_availability = 1)                    # no area: the table says to select one
+    html <- as.character(shown$ui)
+    expect_match(html, "modal-footer", fixed = TRUE)
+    footer <- sub(".*modal-footer", "", html)
+    expect_match(footer, "polygons up to 2,000 km", fixed = TRUE)
+    expect_match(footer, 'href="https://ndc.wur.nl"', fixed = TRUE)
+    expect_match(footer, 'href="mailto:LTER-LIFE@nioo.knaw.nl"', fixed = TRUE)
+    expect_match(footer, "Close", fixed = TRUE)
+  })
+})

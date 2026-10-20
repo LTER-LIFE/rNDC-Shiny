@@ -14,7 +14,7 @@ server_catalogue <- function(input, output, session, state, helpers) {
                        dateRangeInput("catalogue_period", NULL, start = Sys.Date() - 31, end = Sys.Date() - 1,
                                       min = weather_min_date, max = Sys.Date())),
       tableOutput("catalogue_table"),
-      easyClose = TRUE, footer = modalButton("Close"), size = "l"
+      easyClose = TRUE, footer = tagList(contact_note(), modalButton("Close")), size = "l"
     ))
   })
 

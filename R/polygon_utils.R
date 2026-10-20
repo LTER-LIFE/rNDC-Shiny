@@ -153,5 +153,5 @@ polygon_too_large_message <- function(names, limit = max_area_km2()) {
   paste0("Not added: ", if (length(names) == 1) "the polygon " else "the polygons ",
          paste(names, collapse = ", "), if (length(names) == 1) " is" else " are",
          " larger than the limit of ", format(limit, big.mark = ","), " km\u00b2 for this dataset. ",
-         "Choose a smaller area.")
+         "Choose a smaller area. ", contact_sentence("larger areas or help"))
 }

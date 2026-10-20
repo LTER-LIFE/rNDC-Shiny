@@ -54,7 +54,7 @@ retrieve_long_warning <- function(seconds) {
 retrieve_too_long_message <- function(seconds) {
   paste0("The overview would take ", retrieve_format_duration(seconds), " to retrieve, more than the limit of ",
          retrieve_format_duration(max_request_seconds()), ". Choose a shorter period, or download the datasets ",
-         "in the overview first and then clear it before adding more.")
+         "in the overview first and then clear it before adding more. ", contact_sentence("longer retrievals or help"))
 }
 
 max_request_seconds <- function() getOption("rNDC.Shiny.max_request_seconds", if (job_async_enabled()) 900 else 300)

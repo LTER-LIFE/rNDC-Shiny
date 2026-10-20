@@ -137,3 +137,25 @@ test_that("the panels to upload and to draw are not disabled, and say what the l
   expect_match(html, "up to 2,000 km2", fixed = TRUE)
   expect_match(html, paste0("at most ", max_upload_features, " polygons"), fixed = TRUE)
 })
+
+test_that("the messages about a limit say where to go", {
+  sentence <- function(what) paste0("For ", what, ", see https://ndc.wur.nl or contact LTER-LIFE@nioo.knaw.nl.")
+  expect_equal(contact_sentence(), "For help, see https://ndc.wur.nl or contact LTER-LIFE@nioo.knaw.nl.")
+  expect_match(polygon_too_large_message("Big", 2000), sentence("larger areas or help"), fixed = TRUE)
+  expect_match(retrieve_too_long_message(700), sentence("longer retrievals or help"), fixed = TRUE)
+})
+
+test_that("the limits are named as they are set, with links to the website and the address", {
+  expect_match(limits_text(), "polygons up to 2,000 km² for the datasets other than Weather", fixed = TRUE)
+  expect_match(limits_text(), "a retrieval of about 5 minutes at the most", fixed = TRUE)
+  expect_match(limits_text(), "1000 polygons per file or layer", fixed = TRUE)
+  withr::local_options(rNDC.Shiny.max_area_km2 = 750, rNDC.Shiny.max_request_seconds = 120, shiny.maxRequestSize = 20 * 1024^2)
+  expect_match(limits_text(), "polygons up to 750 km²", fixed = TRUE)
+  expect_match(limits_text(), "a retrieval of about 2 minutes", fixed = TRUE)
+  expect_match(limits_text(), "uploads of up to 20 MB", fixed = TRUE)
+
+  html <- as.character(contact_note())
+  expect_match(html, '<a href="https://ndc.wur.nl" target="_blank" rel="noopener noreferrer">https://ndc.wur.nl</a>', fixed = TRUE)
+  expect_match(html, '<a href="mailto:LTER-LIFE@nioo.knaw.nl">LTER-LIFE@nioo.knaw.nl</a>', fixed = TRUE)
+  expect_match(html, "polygons up to 750 km", fixed = TRUE)
+})

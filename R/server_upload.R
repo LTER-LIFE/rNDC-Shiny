@@ -39,7 +39,8 @@ server_upload <- function(input, output, session, state, helpers) {
     }
     if (!is.null(imported) && nrow(imported) > max_upload_features) {
       showNotification(paste0("The upload has ", nrow(imported), " polygons: at most ", max_upload_features,
-                              " are accepted. Split the file or remove polygons that you do not need."),
+                              " are accepted. Split the file or remove polygons that you do not need. ",
+                              contact_sentence("larger uploads or help")),
                        type = "error", duration = 10)
       imported <- NULL
     }
@@ -214,7 +215,8 @@ server_upload <- function(input, output, session, state, helpers) {
 
           if (nrow(poly_only) > max_upload_features) {
             showNotification(paste0("Layer ", chosen_layer, " has ", nrow(poly_only), " polygons: at most ",
-                                    max_upload_features, " are accepted."), type = "error", duration = 10)
+                                    max_upload_features, " are accepted. ", contact_sentence("larger uploads or help")),
+                             type = "error", duration = 10)
             return(NULL)
           }
 

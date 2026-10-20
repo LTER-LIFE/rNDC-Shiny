@@ -270,7 +270,8 @@ availability_help <- function() {
     tags$p("Nothing is checked while you select areas or change years and dates. The marks go when you select other polygons, ",
            "or change a year, a date or the distance of the Weather settings, and a warning tells you to check again."),
     tags$p("Adding a dataset to the overview checks it too, for each selected polygon, with the year or period you chose: a ",
-           "polygon with no data for the dataset is not added, and a message says what to change.")
+           "polygon with no data for the dataset is not added, and a message says what to change."),
+    contact_note()
   )
 }
 
