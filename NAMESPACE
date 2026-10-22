@@ -2,6 +2,7 @@
 
 export(ndc_app)
 export(ndc_gui)
+export(ndc_gui2r)
 import(shiny)
 importFrom(leaflet,addTiles)
 importFrom(leaflet,leaflet)

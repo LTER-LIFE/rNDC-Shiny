@@ -32,17 +32,20 @@ test_that("the estimate counts the requests of Weather and of the NDVI rasters, 
 
 test_that("the limits fit the measured request times", {
   # the longest Weather period (since 1970) is allowed, a few years of NDVI rasters is warned about,
-  # and the whole NDVI record is refused
+  # and the whole NDVI record (about 14 minutes) is allowed too, with a warning; only about twice as much is refused
   weather <- retrieve_estimate_seconds("Weather", "Statistics", weather_min_date, Sys.Date())
   expect_lt(weather, max_request_seconds())
   expect_gt(weather, warn_request_seconds)
   expect_lt(retrieve_estimate_seconds("NDVI", "Geodata", d("2025-06-01"), d("2025-06-30")), warn_request_seconds)
   expect_gt(retrieve_estimate_seconds("NDVI", "Geodata", d("2018-01-01"), d("2019-12-31")), warn_request_seconds)
-  expect_gt(retrieve_estimate_seconds("NDVI", "Geodata", ndvi_min_month, Sys.Date()), max_request_seconds())
+  record <- retrieve_estimate_seconds("NDVI", "Geodata", ndvi_min_month, Sys.Date())
+  expect_gt(record, 600)
+  expect_lt(record, max_request_seconds())
+  expect_gt(2.5 * record, max_request_seconds())
 })
 
 test_that("the limit can be set with an option", {
-  expect_equal(max_request_seconds(), 300)
+  expect_equal(max_request_seconds(), 1800)                 # 30 minutes
   withr::local_options(rNDC.Shiny.max_request_seconds = 1000)
   expect_equal(max_request_seconds(), 1000)
 })
@@ -53,8 +56,9 @@ test_that("durations are described in minutes", {
   expect_equal(retrieve_format_duration(60), "about 1 minute")
   expect_equal(retrieve_format_duration(95), "about 2 minutes")
   expect_equal(retrieve_format_duration(300), "about 5 minutes")
+  expect_equal(retrieve_format_duration(1800), "about 30 minutes")
   expect_match(retrieve_long_warning(182), "about 3 minutes")
-  expect_match(retrieve_too_long_message(700), "about 12 minutes.*limit of about 5 minutes")
+  expect_match(retrieve_too_long_message(2400), "about 40 minutes.*limit of about 30 minutes")
 })
 
 test_that("NDC_MAX_REQUEST_SECONDS sets the limit; nonsense is ignored", {
@@ -69,16 +73,16 @@ test_that("NDC_MAX_REQUEST_SECONDS sets the limit; nonsense is ignored", {
   for (bad in c("abc", "-5", "0", "")) {
     withr::local_envvar(NDC_MAX_REQUEST_SECONDS = bad)
     ndc_setup()
-    expect_equal(max_request_seconds(), 300, info = bad)
+    expect_equal(max_request_seconds(), 1800, info = bad)
   }
 })
 
-test_that("the longer limit and the wording follow the mode", {
-  expect_equal(max_request_seconds(), 300)
+test_that("the limit is the same in both modes, and the wording follows the mode", {
+  expect_equal(max_request_seconds(), 1800)
   expect_match(retrieve_long_warning(120), "busy until it is done")
 
   withr::local_options(rNDC.Shiny.async = TRUE)
-  expect_equal(max_request_seconds(), 900)
+  expect_equal(max_request_seconds(), 1800)
   expect_match(retrieve_long_warning(120), "runs in the background")
   expect_match(retrieve_long_warning(120), "cancel")
 

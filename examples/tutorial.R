@@ -73,9 +73,9 @@ data <- data %>%
 # Requirements:
 # - the `rNDC.Shiny` package (remotes::install_github("LTER-LIFE/rNDC-Shiny")), which installs `rNDC`
 # - your tokens in this R session, e.g. Sys.setenv(NDC_TOKEN = "...", ADC_TOKEN = "...")
-# - an interactive R session (the "Return data to R" button is only shown in interactive sessions)
+# - an interactive R session (ndc_gui2r() shows the "Return data to R" button, and needs one)
 
-weather_data <- rNDC.Shiny::ndc_gui()
+weather_data <- rNDC.Shiny::ndc_gui2r()
 
 # Shiny app steps:
 # 1. Select project: Nestboxes

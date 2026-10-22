@@ -131,15 +131,19 @@ server_download <- function(input, output, session, state, helpers) {
           } else {
             # Visible button: checks for data first, then triggers the hidden
             # real download only if there is something to download.
-            actionButton("check_and_download", "Download dataset(s)", class = "btn-custom")
+            tagList(
+              actionButton("check_and_download", "Download dataset(s)", class = "btn-custom"),
+              # the parameters of the datasets of the overview (JSON files for rNDC::ndc_repeat()), without retrieving them
+              downloadButton("download_parameters", "Save parameters (JSON)", class = "btn-custom")
+            )
           },
           # always there: the pre-check clicks it when the retrieval is done
           div(style = "position:absolute; left:-9999px; width:1px; height:1px; overflow:hidden;",
               downloadButton("download_data", "Download dataset(s)", class = "btn-custom")),
           # "Return data to R" stops the app and hands the data to the calling R
-          # session (`x <- shiny::runApp(...)`). Only offered in an interactive
+          # session (`data_ndc <- ndc_gui2r()`). Only offered by ndc_gui2r(), in an interactive
           # session: in a container it would just shut the app down.
-          if (interactive() && !busy) actionButton("return_to_r", "Return data to R (close app)", class = "btn-custom")),
+          if (return_to_r_offered() && !busy) actionButton("return_to_r", "Return data to R (close app)", class = "btn-custom")),
       # the choice stays when the buttons are drawn again
       checkboxInput("include_parameters", "Include the parameters of each dataset (JSON files, to repeat the retrieval in R)",
                     value = include_parameters())
@@ -200,6 +204,34 @@ server_download <- function(input, output, session, state, helpers) {
       HTML(paste(htmltools::htmlEscape(msgs), collapse = "<br>"))
     }
   })
+
+  # "Save parameters (JSON)": the parameters of the overview as the files that a retrieval records, for rNDC::ndc_repeat(), without
+  # retrieving anything: one JSON file for one dataset, otherwise a zip. Weather asks the AgroDataCube for its closest station.
+  output$download_parameters <- downloadHandler(
+    filename = function() {
+      ov <- overview()
+      if (nrow(ov) > 0 && parameter_file_count(ov) == 1) {
+        paste0(parameter_base_names(ov)[1], ".json")
+      } else {
+        paste0("rNDC_parameters_", format(Sys.Date(), "%Y%m%d"), ".zip")
+      }
+    },
+    content = function(file) {
+      ov <- overview()
+      dir <- tempfile("ndc_parameters_")
+      on.exit(unlink(dir, recursive = TRUE), add = TRUE)
+      export <- withProgress(message = "Writing the parameters...", value = 0, {
+        parameters_export(ov, dir, agro_token, progress = function(done, total) setProgress(value = (done - 1) / total,
+                                                                                            detail = sprintf("%d of %d", done, total)))
+      })
+      if (nrow(export$files) == 1 && length(export$notes) == 0) {
+        file.copy(file.path(dir, export$files$file[1]), file, overwrite = TRUE)
+      } else {
+        writeLines(parameters_readme(export), file.path(dir, "README.txt"))
+        zip::zipr(file, list.files(dir), root = dir, mode = "mirror")        # (the files at the top of the zip)
+      }
+    }
+  )
 
   observeEvent(input$return_to_r, {
     run_retrieval(save_files = FALSE, return_data = TRUE, on_done = return_data_to_r)

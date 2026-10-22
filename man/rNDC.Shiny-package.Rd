@@ -7,7 +7,7 @@
 \title{rNDC.Shiny: graphical user interface to LTER-LIFE's NatureDataCube}
 \description{
 A Shiny app to find and get data from the NatureDataCube (and the related AgroDataCube and
-GroenMonitor services), built on the functions of the \pkg{rNDC} package. Start it with \code{\link[=ndc_gui]{ndc_gui()}}.
+GroenMonitor services), built on the functions of the \pkg{rNDC} package. Start it with \code{\link[=ndc_gui]{ndc_gui()}}, or with \code{\link[=ndc_gui2r]{ndc_gui2r()}} to get the data in R.
 }
 \seealso{
 Useful links:

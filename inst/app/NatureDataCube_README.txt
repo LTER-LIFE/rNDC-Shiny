@@ -32,6 +32,7 @@ You can select an existing project area, draw your own polygon on the map, or up
 4) Downloading data
    - When you've added at least one dataset to the overview, the "Download dataset(s)" button will appear.
    - Click "Download dataset(s)" to start retrieving datasets and packaging them into a ZIP file. Progress messages appear in the "Updates on dataset retrieval" area.
+   - "Save parameters (JSON)" (next to "Download dataset(s)") saves only the parameters of the datasets in the overview, without retrieving them: a .json file for one dataset, a zip for several. Run a file in R with rNDC::ndc_repeat("file.json", token = ...).
    - The ZIP file has the data, the selected polygons, download_summary.csv (what happened to each dataset, with the reference and license of the datasets that the NatureDataCube describes) and CITATIONS.txt (the references to cite for those datasets, and which datasets come from another service, such as the AgroDataCube). The folder "parameters" has a small file per dataset with the parameters of its retrieval: in R, rNDC::ndc_repeat("parameters/<file>.json") repeats it. Untick "Include the parameters of each dataset" below the download button to leave it out.
    - The "Return data to R (close app)" button will run the retrieval and then exit the app returning the results to the calling R session (useful when launching app from RStudio).
 

@@ -56,7 +56,7 @@ weather_chunk_sleep <- 0.5
 # the pause) and per daily NDVI download. They are used to warn before the overview takes long: a retrieval
 # keeps the app busy until it is done. A retrieval above `warn_request_seconds` is warned about, and one
 # above `max_request_seconds()` is refused (option `rNDC.Shiny.max_request_seconds`, or the environment
-# variable NDC_MAX_REQUEST_SECONDS; the default is 300 seconds, or 900 when retrievals run in the background,
+# variable NDC_MAX_REQUEST_SECONDS; the default is 1800 seconds (30 minutes), also when retrievals run in the background,
 # where they hold nobody up).
 request_seconds <- c(weather_chunk = 0.9, ndvi_day = 0.25, raster_request = 2, raster_million_cells = 0.55)
 

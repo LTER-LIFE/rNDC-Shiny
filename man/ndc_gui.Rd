@@ -2,9 +2,17 @@
 % Please edit documentation in R/ndc_gui.R
 \name{ndc_gui}
 \alias{ndc_gui}
+\alias{ndc_gui2r}
 \title{Launch the NatureDataCube GUI}
 \usage{
 ndc_gui(
+  host = "127.0.0.1",
+  port = NULL,
+  launch.browser = getOption("shiny.launch.browser", interactive()),
+  ...
+)
+
+ndc_gui2r(
   host = "127.0.0.1",
   port = NULL,
   launch.browser = getOption("shiny.launch.browser", interactive()),
@@ -23,13 +31,22 @@ sessions.}
 \item{...}{further arguments passed to \code{\link[shiny:runApp]{shiny::runApp()}}.}
 }
 \value{
-The list of data returned by the "Return data to R" button (with the elements \code{datasets},
-\code{overview}, \code{messages} and \code{summary}), or \code{NULL} if the app is closed in any other way.
+\code{ndc_gui()}: \code{NULL}, invisibly, when the app is closed. \code{ndc_gui2r()}: the list of data returned by the
+"Return data to R" button (with the elements \code{datasets}, \code{overview}, \code{messages}, \code{summary} and \code{parameters}), or \code{NULL}
+if the app is closed in any other way.
 }
 \description{
-Run the Shiny app that gives a graphical user interface to the NatureDataCube. To continue working
-with the retrieved data in R, assign the result (\code{data_ndc <- ndc_gui()}) and use the
-"Return data to R (close app)" button of the app (only offered in interactive sessions).
+Run the Shiny app that gives a graphical user interface to the NatureDataCube. \code{ndc_gui()} opens the app to choose,
+check and download datasets (a zip with the data). \code{ndc_gui2r()} opens the same app with one more button, "Return data
+to R (close app)": it closes the app and gives the retrieved data to the R session, to continue working with it
+(\code{data_ndc <- ndc_gui2r()}). That needs an interactive R session.
+}
+\examples{
+\dontrun{
+ndc_gui()                      # choose and download datasets
+data_ndc <- ndc_gui2r()        # choose datasets and get them in R: click "Return data to R (close app)"
+names(data_ndc$datasets)
+}
 }
 \seealso{
 \code{\link[=ndc_app]{ndc_app()}} for the credentials the app needs.

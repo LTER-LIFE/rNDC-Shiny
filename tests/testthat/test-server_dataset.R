@@ -160,6 +160,7 @@ ndvi_rasters <- function(session, from_year, from_month, to_year, to_month, view
 }
 
 test_that("an NDVI raster period that would take too long is refused", {
+  withr::local_options(rNDC.Shiny.max_request_seconds = 300)   # (the scenario is made for a limit of 5 minutes)
   mock_check()   # (what the services have is tested in test-availability.R)
   rec <- new.env()
   local_mocked_bindings(retrieve_too_long_message = function(seconds) { rec$refused <- seconds; "too long" })
@@ -194,6 +195,7 @@ test_that("a long but allowed retrieval is added, with a warning", {
 })
 
 test_that("the whole overview counts, not only the dataset being added", {
+  withr::local_options(rNDC.Shiny.max_request_seconds = 300)   # (the scenario is made for a limit of 5 minutes)
   mock_check()   # (what the services have is tested in test-availability.R)
   rec <- new.env()
   local_mocked_bindings(retrieve_too_long_message = function(seconds) { rec$refused <- seconds; "too long" })
@@ -219,6 +221,7 @@ test_that("the whole overview counts, not only the dataset being added", {
 })
 
 test_that("each selected polygon is retrieved separately, so it counts too", {
+  withr::local_options(rNDC.Shiny.max_request_seconds = 300)   # (the scenario is made for a limit of 5 minutes)
   mock_check()   # (what the services have is tested in test-availability.R)
   rec <- new.env()
   local_mocked_bindings(retrieve_too_long_message = function(seconds) { rec$refused <- seconds; "too long" })

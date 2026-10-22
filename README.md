@@ -36,18 +36,21 @@ To generate your free personal API token you can go to [API Access Registration]
 
 ```r
 library(rNDC.Shiny)
-data_ndc <- ndc_gui()
+ndc_gui()                    # choose, check and download datasets (a zip)
+data_ndc <- ndc_gui2r()      # the same app, to get the data in R
 ```
 
-Launching the app this way stores what you retrieve in an R object, so that you can continue working with it after closing the app: choose your datasets in the app, and click "Return data to R (close app)" (this button is only shown in interactive R sessions). Make sure your working directory is the folder you want to work from (`getwd()` shows the current one, `setwd()` changes it).
+`ndc_gui2r()` stores what you retrieve in an R object, so that you can continue working with it after closing the app: choose your datasets in the app, and click "Return data to R (close app)" (the button is only shown by `ndc_gui2r()`, in interactive R sessions). `ndc_gui()` shows no such button: it is for downloading the data as a zip. Make sure your working directory is the folder you want to work from (`getwd()` shows the current one, `setwd()` changes it).
 
-`ndc_gui()` returns a list with:
+`ndc_gui2r()` returns a list with:
 
 - `datasets`: the retrieved data, one element per row of the overview, named after the dataset and the row (e.g. `Weather_1`, `Nitrogen_2`, `NDVI_stats_3`); `sf` objects for vector data and tables, and `terra` rasters for the raster datasets,
 - `overview`: the datasets, polygons and periods that were requested,
 - `messages` and `summary`: what happened to each dataset (retrieved, failed and why).
 
 The zip file also has a folder `parameters` with a JSON file per dataset: the parameters of the retrieval (the area as it was sent, the year or period, ...; never a token). `rNDC::ndc_repeat("parameters/land_use_geodata_loobos.json")` repeats a retrieval in R, and the column `parameters` of `download_summary.csv` tells which file belongs to which row. The checkbox "Include the parameters of each dataset" under the download button turns this off.
+
+**Save parameters (JSON)**, next to "Download dataset(s)", saves only those files, without retrieving anything: the parameters of the datasets in the overview, as the files that `rNDC::ndc_repeat()` runs. One dataset gives a `.json` file, several give a zip (with a `README.txt` that says how to run them, and which rows have no file and why). The files are named like in the download (`land_use_geodata_loobos.json`). Weather has two: `*_station.json` finds the closest weather station of the area (the app asks the AgroDataCube for it when you click the button, as a retrieval does), and the other has the data of that station. NDVI statistics have a file for the LTER and SNL project areas only. The files never have a token: give it when you run them, for example `rNDC::ndc_repeat("land_use_geodata_loobos.json", token = Sys.getenv("NDC_TOKEN"))`.
 
 When a limit is exceeded, or you need help: see https://ndc.wur.nl or contact LTER-LIFE@nioo.knaw.nl (the dialog of the button below, the messages about the limits and the info button say so, with the limits as they are set).
 
@@ -77,14 +80,14 @@ For Land Use and Nitrogen, the app tells you whether the selected area has data 
 
 The NDVI rasters and long Weather periods make many requests (one download per day for NDVI rasters, one request per 200 days for Weather). When you add a dataset, the app estimates how long the whole overview will take to retrieve (NDVI rasters: about a quarter of a second per day, so a year takes about a minute and a half). Above about a minute it warns you, and above a limit it refuses and asks for a shorter period. While retrieving, the progress bar shows where it is.
 
-**Where the retrieval runs.** In an interactive R session (`ndc_gui()` from R), the app retrieves in your R session, and is busy until it is done; the limit is 5 minutes. In a deployment (a non-interactive session, such as the Docker image) the retrieval runs in a background R process, so that a long retrieval does not hold up the other users; the limit is then 15 minutes. When all background processes are busy the retrieval waits in a queue (the progress bar shows the position), and while it waits or runs a "Cancel retrieval" button stops it. Settings:
+**Where the retrieval runs.** In an interactive R session (`ndc_gui()` or `ndc_gui2r()` from R), the app retrieves in your R session, and is busy until it is done; the limit is 30 minutes. In a deployment (a non-interactive session, such as the Docker image) the retrieval runs in a background R process, so that a long retrieval does not hold up the other users; the limit is the same 30 minutes. When all background processes are busy the retrieval waits in a queue (the progress bar shows the position), and while it waits or runs a "Cancel retrieval" button stops it. Settings:
 
 | Variable | Meaning |
 |---|---|
 | `NDC_ASYNC` | `true` or `false`: retrieve in background processes or not (default: yes when not interactive). |
 | `NDC_WORKERS` | The number of background processes, i.e. retrievals that run at the same time; more wait in a queue (default: up to 4, depending on the cores). Each uses memory (a few hundred MB). |
 | `NDC_MAX_QUEUE` | The number of retrievals that may wait for a free process (default 20); beyond that, new retrievals are refused with a message. |
-| `NDC_MAX_REQUEST_SECONDS` | The longest retrieval that is accepted (the option `rNDC.Shiny.max_request_seconds` does the same). |
+| `NDC_MAX_REQUEST_SECONDS` | The longest retrieval that is accepted, in seconds (default 1800, 30 minutes; the option `rNDC.Shiny.max_request_seconds` does the same). |
 
 A session retrieves one overview at a time. In the background mode, the package must be installed (the processes load it), or loaded with `devtools::load_all()` (the processes then load it from its source folder, with `pkgload`). A user who leaves the page cancels the retrieval.
 

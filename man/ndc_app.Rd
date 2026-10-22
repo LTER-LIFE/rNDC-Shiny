@@ -20,7 +20,7 @@ The app needs the environment variable \code{NDC_TOKEN} (NatureDataCube API toke
 Agricultural fields) are disabled; all the others come from the NatureDataCube. \code{SHINY_APP_BASE_URL} sets the proxy path when the app runs
 behind a reverse proxy (e.g. \verb{/naturedatacube}). \code{NDC_MAX_UPLOAD_MB} sets the largest upload (default 100 MB;
 Shiny's own default is 5 MB). \code{NDC_MAX_REQUEST_SECONDS} sets the longest retrieval that
-is accepted (default 300 seconds): the overview is estimated when a dataset is added, and a retrieval keeps
+is accepted (default 1800 seconds, 30 minutes): the overview is estimated when a dataset is added, and a retrieval keeps
 the app busy until it is done. \code{NDC_MAX_AREA_KM2} sets the largest total area of the selected polygons (default 2000 km2;
 Weather, which uses the centre of each polygon, has no area limit) and \code{NDC_MAX_POLYGONS} the most polygons that can be
 selected at once (default 100, Weather included): a drawn or uploaded polygon can be any size, and a huge area makes a

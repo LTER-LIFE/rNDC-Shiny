@@ -57,7 +57,10 @@ retrieve_too_long_message <- function(seconds) {
          "in the overview first and then clear it before adding more. ", contact_sentence("longer retrievals or help"))
 }
 
-max_request_seconds <- function() getOption("rNDC.Shiny.max_request_seconds", if (job_async_enabled()) 900 else 300)
+# The longest retrieval that is accepted: 30 minutes, whether it runs in the R session or in the background
+default_max_request_seconds <- 1800
+
+max_request_seconds <- function() getOption("rNDC.Shiny.max_request_seconds", default_max_request_seconds)
 
 # ---- Progress while retrieving ----
 

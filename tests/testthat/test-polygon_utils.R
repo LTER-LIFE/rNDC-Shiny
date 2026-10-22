@@ -278,7 +278,7 @@ test_that("the messages about a limit say where to go", {
 
 test_that("the limits are named as they are set, with links to the website and the address", {
   expect_match(limits_text(), "up to 100 selected polygons, with a total area of up to 2,000 km² (Weather has no area limit)", fixed = TRUE)
-  expect_match(limits_text(), "a retrieval of about 5 minutes at the most", fixed = TRUE)
+  expect_match(limits_text(), "a retrieval of about 30 minutes at the most", fixed = TRUE)
   expect_match(limits_text(), "1000 polygons per file or layer", fixed = TRUE)
   withr::local_options(rNDC.Shiny.max_area_km2 = 750, rNDC.Shiny.max_polygons = 40, rNDC.Shiny.max_request_seconds = 120,
                        shiny.maxRequestSize = 20 * 1024^2)
